@@ -346,6 +346,19 @@ async function decide(deps: Deps, ctx: Context, t: Transaction): Promise<Decisio
   };
 }
 
+/** Categories already reported as missing a hint — once per run is enough. */
+const reported = new Set<string>();
+
+/** One line in Telegram when a category has no hint in config.json, so you remember to add one. */
+async function reportUnhinted(deps: Deps, tags: readonly Tag[]): Promise<void> {
+  const options = [...categoryOptions(false, tags, deps.hints), ...categoryOptions(true, tags, deps.hints)];
+  const fresh = [...new Set(options.filter((o) => !o.hint && !reported.has(o.name)).map((o) => o.name))];
+  if (fresh.length > 0) {
+    await deps.telegram.send(deps.chatId, `No hint in config.json for: ${fresh.map((n) => `<b>${escapeHtml(n)}</b>`).join(', ')}`, null, false);
+    fresh.forEach((n) => reported.add(n));
+  }
+}
+
 /**
  * One pass: every new (unviewed) transaction since `startDate` gets a
  * category and is marked viewed — which is also how the next pass knows
@@ -354,6 +367,7 @@ async function decide(deps: Deps, ctx: Context, t: Transaction): Promise<Decisio
  */
 export async function scan(deps: Deps, handled: Set<string>): Promise<number> {
   const recent = await deps.zenmoney.since(Math.floor((Date.now() - WINDOW_DAYS * DAY) / 1000));
+  await reportUnhinted(deps, recent.tags);
   const todo = newTransactions(recent.transactions, deps.startDate, handled);
   if (todo.length === 0) {
     return 0;

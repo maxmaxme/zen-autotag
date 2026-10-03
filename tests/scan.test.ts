@@ -81,7 +81,7 @@ function setup(recent: Transaction[], history: Transaction[] = []) {
     jevToken: 't',
     gmail: null,
     startDate: '2026-09-01',
-    hints: { '🎈': 'party supplies' },
+    hints: { '🎈': 'party supplies', Food: 'meals', 'Food → Out': 'eating out', 'Food → Groceries': 'shop food', Salary: 'pay' },
     minConfidence: 0.8,
     applyConfidence: 0.5,
     dryRun: false,
@@ -137,8 +137,19 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ payee: 'Cafe', originalPayee: 'Cafe' })], past);
     const requests = jev({ choice: 'Food → Out', confidence: 0.9 });
     await scan(deps, new Set());
-    expect(requests[0]!.criteria).toMatchObject({ 'Food → Out': null, '🎈': 'party supplies' });
+    expect(requests[0]!.criteria).toMatchObject({ 'Food → Out': 'eating out', '🎈': 'party supplies' });
     expect(requests[0]!.state.how_i_filed_this_payee_before).toEqual([{ category: 'Food → Out', times: 1, typical_amount: 4 }]);
+  });
+});
+
+describe('categories without a hint', () => {
+  it('are named in one message, once', async () => {
+    const { deps, sent } = setup([]);
+    delete deps.hints.Salary;
+    delete deps.hints['Food → Groceries'];
+    await scan(deps, new Set());
+    await scan(deps, new Set());
+    expect(sent.map((m) => m.html)).toEqual(['No hint in config.json for: <b>Food → Groceries</b>, <b>Salary</b>']);
   });
 });
 

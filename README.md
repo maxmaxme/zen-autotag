@@ -48,6 +48,9 @@ the start date and your category hints:
 { "startDate": "2026-10-04", "hints": { "<category as shown, e.g. Parent → Child>": "plain words: what goes there" } }
 ```
 
+Categories with no hint are named in one Telegram message (once per run).
+Hints are read at start — restart after editing.
+
 | File | Does |
 | --- | --- |
 | `src/main.ts` | env, config, the loop, error alerts to Telegram |
