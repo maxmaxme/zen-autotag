@@ -68,7 +68,7 @@ jobs:
           platforms: linux/arm64
           push: true
           tags: |
-            ghcr.io/maxmaxme/zen-receipts:latest
-            ghcr.io/maxmaxme/zen-receipts:sha-${{ steps.sha.outputs.short }}
+            ghcr.io/maxmaxme/zen-autotag:latest
+            ghcr.io/maxmaxme/zen-autotag:sha-${{ steps.sha.outputs.short }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

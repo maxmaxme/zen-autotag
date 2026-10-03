@@ -4,15 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Long-running Node/TS service that categorises ZenMoney transactions from
-emailed receipts. Reads Gmail over IMAP, parses receipts (Glovo orders,
-PayPal's Glovo Prime receipt), decides the category — the store's pinned
-category, else TypeSafe Jev picking among user-chosen candidate categories
-with user-written hints — finds the matching charge in a local mirror of
-ZenMoney and sets it. Small `node:http` UI for candidates, store pins and
-reviewing. Personal use.
+A small long-running Node/TS service that categorises new ZenMoney
+transactions: payee habit, else TypeSafe Jev (with merchant receipts from
+Gmail for look-alike charges — Glovo, Amazon), marks them viewed, and asks
+in Telegram (inline buttons) only when unsure. Personal use; see README.md
+for the behaviour.
 
-CI publishes `ghcr.io/maxmaxme/zen-receipts:latest` (+ `:sha-<short>`,
+CI publishes `ghcr.io/maxmaxme/zen-autotag:latest` (+ `:sha-<short>`,
 arm64) on every push to `main`. Deployment is someone else's job.
 
 ## Commands
@@ -21,69 +19,51 @@ arm64) on every push to `main`. Deployment is someone else's job.
 npm install
 npm run typecheck                 # tsc --noEmit
 npm test                          # vitest run
-node src/index.ts                 # needs ZENMONEY_TOKEN, GMAIL_USER, GMAIL_APP_PASSWORD
+DRY_RUN=1 node src/main.ts        # reads .env next to package.json
 ```
-
-`.env` next to `package.json` is auto-loaded (and gitignored).
 
 ## Critical conventions
 
-**Node 24 native TypeScript stripping, no build step.** Relative imports
-use `.ts`; no `enum` / `namespace` / parameter properties / decorators
-(`erasableSyntaxOnly`). SQLite is `node:sqlite`; runtime deps are only
-`pino`, `imapflow`, `mailparser` (all pure JS — the image is cross-built
-for arm64).
+**Keep it small and sequential.** One loop in `main.ts`: scan every
+SCAN_MINUTES, Telegram long polling in between. No timers, no HTTP server,
+no queue, no database. A tap and a scan never run at the same time. Resist
+adding state: ZenMoney's `viewed` flag is the "done" marker, Telegram
+messages carry their own state (UUIDs packed as 22-char base64url in
+`callback_data`, ≤64 bytes; the "Other" list keeps the original buttons
+above « Back), `config.json` holds only startDate + hints.
 
-**This repo is public, and must not reveal what its user spends on.** No
-categories, category hints, store names or store→category rules in code,
-docs, tests or commit messages — not even as "defaults". All of that lives
-only in the deployed SQLite (`candidates`, `stores`), set in the UI. Tests
-use neutral synthetic data (`Shop A`, `Category B`, `Item 1`) from
-`tests/helpers.ts`; never paste real receipts.
+**Functions stay under Sonar's cognitive complexity of 15** — split into
+named steps (see `scan.ts`: newTransactions → loadContext → gather → choose
+→ decide → notice) rather than growing one function.
 
-**Never write to ZenMoney without a reason the user agreed to.** Receipts
-emailed before the first run (`kv.auto_since`) go to `review` and change
-nothing until approved in the UI. Each ZenMoney transaction is written at
-most once (`receipts.zm_tx_id` is UNIQUE and a receipt leaves
-`matched`/`review` after applying) — a later manual change must stick.
-Writes replace the whole transaction object, so always start from the
-freshly mirrored `raw` and change only `tag`, empty `comment`, `changed`.
+**This repo is public and must not reveal what its user spends on.** No
+categories, hints, shops or real receipts in code, docs, tests or commit
+messages. Tests use neutral made-up data; `tests/fixtures.ts` reproduces
+the receipt templates' structure with fake content. Real data only under
+`data/` and `.env` (gitignored).
 
-**ZenMoney mirror** (`src/zenmoney/mirror.ts`): every diff call — reads
-and writes — goes through `ZenMirror.sync` so `serverTimestamp` never
-skips changes. Only transactions whose payee matches `ZM_PAYEE_PATTERN`
-are kept. API reference: <https://github.com/zenmoney/ZenPlugins/wiki/ZenMoney-API>.
+**Writing to ZenMoney replaces the whole object** — always start from the
+transaction just fetched, change only `tag`, `viewed`, an empty `comment`
+and `changed`. Never touch: transfers (incomeAccount ≠ outcomeAccount),
+viewed transactions, anything before `startDate`, a non-empty comment.
 
-**Category precedence** (`runner.ts::resolveTag`): the store's pinned
-category → the receipt's own decision (Jev pick, or the user's pick in
-review). Jev chooses only among `candidates`; options are sent by readable
-category name + hint and mapped back to ids. A pick below
-`JEV_MIN_CONFIDENCE`, or no candidates/classifier, parks the receipt in
-`review`. A Jev error leaves it undecided and retried; a 401/403 fails the
-run (Telegram).
+**Never guess on failure.** A Jev 5xx skips that transaction (retried next
+pass, nothing marked); 401/403 fails the pass (Telegram alert). An email
+that doesn't parse is logged; the charge falls back to history-only.
 
-**Order in a run matters:** read mail → sync mirror → match → expire →
-classify → apply. Matching before expiring gives backfilled receipts one
-real attempt.
+**Tests check behaviour that can go wrong** (wrong total picked from a
+receipt, a field lost on write, a tie matched at random, a tap from another
+chat) — not formatting trivia.
 
-**Gmail search** uses Gmail's own syntax (`X-GM-RAW`) over "All Mail",
-found by the `\All` special-use flag because its name is localised. Gmail
-matches whole words — `glovo` doesn't hit `GLOVOAPP23`.
+**APIs:** ZenMoney `POST /v8/diff/` (any past `serverTimestamp` works as a
+sliding window) — <https://github.com/zenmoney/ZenPlugins/wiki/ZenMoney-API>.
+TypeSafe Choice question — <https://docs.typesafe.ai/api>. Gmail over IMAP
+with an app password, "All Mail" found by the `\All` flag (name is
+localised), Gmail search syntax via `X-GM-RAW` (matches whole words).
 
-## Architecture
+## Adding a merchant
 
-```
-src/index.ts              # entry — config, wiring, interval timer
-src/config.ts             # env → Config
-src/runner.ts             # one pass: mail → mirror → match → expire → classify → apply; resolveTag
-src/receipts/parse.ts     # email → ParsedReceipt (Glovo, PayPal Prime) + GMAIL_QUERIES
-src/receipts/stores.ts    # storeKey normalisation
-src/classify/jev.ts       # TypeSafe Jev Choice over the candidate categories → id + confidence
-src/match.ts              # findMatch (amount/date window), withCategory
-src/mail/gmail.ts         # IMAP fetch with app password
-src/zenmoney/             # client (diff), mirror (incremental sync + tags), types
-src/storage/              # node:sqlite store; migrations in PRAGMA user_version (append-only)
-src/notify/telegram.ts    # failure / recovery transitions
-src/web/                  # node:http routes + server-rendered HTML
-tests/                    # vitest; synthetic emails, fake ZenMoney / mailbox / classifier
-```
+Append to `MERCHANTS` in `src/receipts.ts`: payee regex, context for Jev,
+Gmail queries, `maxDaysApart` (charge vs email day), and parsers returning
+`{ store, items, totalCents, day }`. Add a fixture that mirrors the real
+template's structure and a test for the total, the items and a near-miss.

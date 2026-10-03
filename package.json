@@ -1,7 +1,7 @@
 {
-  "name": "zen-receipts",
+  "name": "zen-autotag",
   "version": "0.1.0",
-  "description": "Categorise ZenMoney transactions from emailed receipts (Glovo first) — self-hosted",
+  "description": "Categorises new ZenMoney transactions with an AI classifier (payee habits, receipts from Gmail) and asks in Telegram only when unsure — self-hosted",
   "private": true,
   "type": "module",
   "scripts": {
@@ -16,8 +16,7 @@
   },
   "dependencies": {
     "imapflow": "^2.2.4",
-    "mailparser": "^3.9.34",
-    "pino": "^10.4.0"
+    "mailparser": "^3.9.34"
   },
   "devDependencies": {
     "@types/mailparser": "^3.9.0",

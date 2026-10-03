@@ -1,76 +1,81 @@
-# zen-receipts
+# zen-autotag
 
-Sets the right [ZenMoney](https://zenmoney.app) category on card charges
-that the bank statement can't tell apart, using the receipts that land in
-your mailbox.
+Categorises new [ZenMoney](https://zenmoney.app) transactions with an AI
+classifier, so you don't have to — and asks you in Telegram only when it
+isn't sure.
 
-The motivating case: every Glovo order shows up on the card as the same
-`Paypal *glovo`, whatever was actually ordered. Glovo emails a receipt for
-each delivered order, with the store and the line items. zen-receipts reads
-those emails, decides which of *your* ZenMoney categories the order belongs
-to, finds the matching charge in ZenMoney and categorises it.
+Every few minutes it looks at transactions your bank sync brought into
+ZenMoney that you haven't viewed yet, and for each one:
+
+1. **Payee habit.** If you've filed this payee the same way 3+ times (≥90%),
+   that's the category. No AI call.
+2. Otherwise **[TypeSafe Jev](https://docs.typesafe.ai)** picks one of your
+   ZenMoney categories. It is shown the payee, amount, account, date, how you
+   filed this payee before, optional hints for categories whose names don't
+   explain themselves — and, for merchants whose charges all look alike, the
+   **receipt from your mailbox** (Glovo, Amazon): store and line items.
+3. The transaction gets the category and is **marked viewed**. Marking it
+   viewed is also how the next pass knows it's done, so the service stores
+   nothing about transactions.
+4. When Jev wasn't sure, or another category is a real contender, you get a
+   Telegram message — current category, `✓ OK`, the alternatives with their
+   probabilities, and the full list. One tap fixes it in ZenMoney.
+
+| Jev's confidence | What happens |
+| --- | --- |
+| ≥ `MIN_CONFIDENCE` (0.8) | applied silently |
+| ≥ `APPLY_CONFIDENCE` (0.5) | applied, and you're asked |
+| lower | category left as it was, and you're asked |
+
+Transfers between your own accounts, transactions you've already viewed and
+anything dated before the first start are never touched.
+
+## Design
+
+One process, one loop, nothing in parallel:
 
 ```
-Gmail (IMAP)  ──►  receipt: store, items, total, day
-                        │  category: pinned for the store, or picked by the classifier
-                        │            among the categories you allowed (with your hints)
-ZenMoney diff ──►  charge with the same amount, near that day, payee ~ /glovo/
-                        │
-                        └─► set category (+ "Glovo: <store>" comment) on that charge
+forever:
+  every SCAN_MINUTES → scan()                # ZenMoney → receipts → Jev → ZenMoney → Telegram
+  in between → Telegram long polling          # button taps; no public URL needed
 ```
 
-Self-hosted, one small container with a web UI. No auth of its own — put it
-behind your reverse proxy. No categories, stores or spending habits are
-baked into the code: they live in your deployment's database.
+No database. ZenMoney's `viewed` flag marks what's done, Telegram messages
+carry their own state (ids packed into the buttons), and `config.json` holds
+the start date and your category hints:
 
-## What it does, precisely
+```json
+{ "startDate": "2026-10-04", "hints": { "<category as shown, e.g. Parent → Child>": "plain words: what goes there" } }
+```
 
-- **Receipts it understands:** Glovo "Details of your order" (sent after
-  delivery, so the total is final) and PayPal's receipt for Glovo Prime.
-  Parsers live in `src/receipts/parse.ts`; adding a merchant means adding a
-  parser and a Gmail query.
-- **Category:** a category you pinned to the store wins. Otherwise
-  [TypeSafe Jev](https://docs.typesafe.ai) (optional) picks one of the
-  categories you ticked in the UI, judging the store and the line items
-  against each category's name and the hint you wrote for it. A pick below
-  `JEV_MIN_CONFIDENCE`, or no way to decide at all, waits in **Review**.
-- **Matching:** same amount to the cent, money out, payee matching
-  `ZM_PAYEE_PATTERN`, from one day before to five days after the receipt
-  (by the charge's own date, so it doesn't matter when you sync your bank in
-  ZenMoney); the closest date wins, a tie is left alone. A receipt waits up
-  to `RECEIPT_EXPIRE_DAYS` for its charge to appear. A charge is claimed by
-  at most one receipt.
-- **Writes:** each charge is touched **once**. If you change the category
-  afterwards, it stays changed. A comment you wrote is kept; an empty one
-  becomes "Glovo: &lt;store&gt;".
-- **History:** receipts from before the first run go to **Review** —
-  current vs proposed category, editable per row — and only change ZenMoney
-  when you apply them. Later ones apply automatically.
-- **ZenMoney sync** uses its incremental `diff` protocol: one full download
-  on the first run, then only changes, every `RUN_INTERVAL_MINUTES`.
+Nothing about your categories, shops or spending is in this repository.
+
+| File | Does |
+| --- | --- |
+| `src/main.ts` | env, config, the loop, error alerts to Telegram |
+| `src/scan.ts` | one pass: new transactions → habit or Jev → save → messages |
+| `src/taps.ts` | button presses: OK / pick / other / back |
+| `src/receipts.ts` | merchants (Glovo, Amazon): Gmail queries, parsers, charge ↔ receipt matching |
+| `src/gmail.ts` | IMAP search over "All Mail" |
+| `src/jev.ts` | one Choice question to TypeSafe |
+| `src/zenmoney.ts` | the `/v8/diff/` sync endpoint |
+| `src/telegram.ts` | the few Bot API calls used, callback encoding |
 
 ## Setup
 
-1. **ZenMoney token** — ZenMoney doesn't issue API keys; sign in at
-   [zerro.app](https://zerro.app) and copy `localStorage.zm_token`
-   (`localStorage.zm_server` says `ru` or `app`).
-2. **Gmail app password** — turn on 2-Step Verification, then create one at
-   <https://myaccount.google.com/apppasswords>.
-3. **TypeSafe token** (optional) for Jev.
-4. Run:
+1. ZenMoney token: sign in at [zerro.app](https://zerro.app), copy
+   `localStorage.zm_token` (and `zm_server`: `ru` or `app`).
+2. TypeSafe token for Jev.
+3. A new Telegram bot from @BotFather; send it `/start`.
+4. Optional, for receipts: a Gmail app password.
+5. Run (try `DRY_RUN=1` first — it decides and messages but writes nothing):
 
    ```bash
-   docker run -d --name zen-receipts -p 8080:8080 \
-     --env-file .env -v "$(pwd)/data:/app/data" \
-     ghcr.io/maxmaxme/zen-receipts:latest
+   docker run -d --name zen-autotag --env-file .env \
+     -v "$(pwd)/data:/app/data" ghcr.io/maxmaxme/zen-autotag:latest
    ```
 
-5. Open the UI: tick the categories the classifier may use and write a
-   hint for each (what kind of shop or purchase belongs there), pin stores
-   that always mean one thing, then go through **Review** and apply what
-   looks right.
-
-See [`.env.example`](.env.example) for every setting.
+See [`.env.example`](.env.example).
 
 ## Development
 
@@ -78,8 +83,7 @@ See [`.env.example`](.env.example) for every setting.
 npm install
 npm run typecheck
 npm test
-cp .env.example .env   # fill in, ZEN_RECEIPTS_DATA_DIR=./data
-node src/index.ts
+node src/main.ts        # reads .env next to package.json
 ```
 
 Node 24 runs the TypeScript directly — no build step.
