@@ -80,11 +80,13 @@ export function habit(history: ReturnType<typeof payeeHistory>): string | null {
 }
 
 export function categoryOptions(income: boolean, tags: readonly Tag[], hints: Record<string, string>): Option[] {
+  // Category names can carry stray spaces ("Name "); hint keys shouldn't have to.
+  const byName = new Map(Object.entries(hints).map(([k, v]) => [k.trim(), v]));
   return tags
     .filter((t) => (income ? t.showIncome === true : t.showOutcome !== false))
     .map((t) => {
       const name = tagLabel(t, tags);
-      return { id: t.id, name, hint: hints[name] ?? '' };
+      return { id: t.id, name, hint: byName.get(name) ?? '' };
     });
 }
 

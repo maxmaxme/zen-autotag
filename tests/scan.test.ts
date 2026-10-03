@@ -14,7 +14,7 @@ const tags: Tag[] = [
   { id: FOOD, title: 'Food', parent: null, showOutcome: true },
   { id: OUT, title: 'Out', parent: FOOD, showOutcome: true },
   { id: GROCERIES, title: 'Groceries', parent: FOOD, showOutcome: true },
-  { id: EMOJI, title: '🎈', parent: null, showOutcome: true },
+  { id: EMOJI, title: '🎈 ', parent: null, showOutcome: true }, // stray space, as real names sometimes have
   { id: SALARY, title: 'Salary', parent: null, showIncome: true, showOutcome: false },
 ];
 const CARD = ID(100);

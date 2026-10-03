@@ -114,10 +114,10 @@ export class ZenMoney {
   }
 }
 
-/** "Parent → Child", the way the user sees categories. */
+/** "Parent → Child", the way the user sees categories (stray spaces in titles dropped). */
 export function tagLabel(tag: Tag, tags: readonly Tag[]): string {
   const parent = tag.parent ? tags.find((t) => t.id === tag.parent) : undefined;
-  return parent ? `${parent.title} → ${tag.title}` : tag.title;
+  return parent ? `${parent.title.trim()} → ${tag.title.trim()}` : tag.title.trim();
 }
 
 /** A transfer between two of the user's own accounts — not spending, never touched. */
