@@ -81,6 +81,12 @@ describe('button taps', () => {
     expect(labels(s.edits[1]!.keyboard)).toEqual(labels(s.keyboard));
   });
 
+  it('Other on money in lists spending categories too — a refund goes there', async () => {
+    const s = setup([{ ...transaction, outcome: 0, income: 9.6 }]);
+    await handleTap(s.deps, s.tap(encode({ kind: 'other', tx: txId })));
+    expect(labels(s.edits[0]!.keyboard).slice(3)).toEqual(['Food', 'Gifts', 'Salary']);
+  });
+
   it('ignores taps from any other chat', async () => {
     const s = setup();
     await handleTap(s.deps, s.tap(encode({ kind: 'set', tx: txId, tag: ID(2) }), undefined, 999));

@@ -132,6 +132,16 @@ describe('what scan touches', () => {
     expect(requests[0]!.state).toMatchObject({ direction: 'money in', amount: 2000 });
   });
 
+  it('money back from a payee you have paid is a refund: spending categories, flagged for Jev', async () => {
+    const paid = tx({ viewed: true, payee: 'Shop', originalPayee: 'Shop', tag: [GROCERIES], date: '2026-08-01' });
+    const { deps } = setup([tx({ outcome: 0, income: 3, payee: 'Shop', originalPayee: 'Shop' })], [paid]);
+    const requests = jev({ choice: 'Food → Groceries', confidence: 0.9 });
+    await scan(deps, new Set());
+    expect(Object.keys(requests[0]!.criteria)).toContain('Food → Groceries');
+    expect(Object.keys(requests[0]!.criteria)).not.toContain('Salary');
+    expect(requests[0]!.state.looks_like).toMatch(/refund/);
+  });
+
   it('gives Jev the readable category names, the user hints and the payee history', async () => {
     const past = [tx({ viewed: true, payee: 'Cafe', originalPayee: 'Cafe', tag: [OUT], date: '2026-08-01', outcome: 4 })];
     const { deps } = setup([tx({ payee: 'Cafe', originalPayee: 'Cafe' })], past);
@@ -167,6 +177,25 @@ describe('habits', () => {
   it('statement variants of one payee count as the same payee', () => {
     expect(payeeKey({ payee: null, originalPayee: 'Www.shop* Nw4k66f04' })).toBe(payeeKey({ payee: null, originalPayee: 'www.shop' }));
     expect(payeeKey({ payee: null, originalPayee: 'Shop 05aug Msh5tfdp' })).toBe(payeeKey({ payee: null, originalPayee: 'Shop 21aug Mynbcrfc' }));
+  });
+
+  it('a line with no payee is known by its bank description, minus reference numbers', () => {
+    const fee = (ref: string) => payeeKey({ payee: null, originalPayee: null, comment: `Card fee for: REF-${ref}` });
+    expect(fee('5805848335')).toBe(fee('5918815368'));
+    expect(payeeKey({ payee: null, originalPayee: null, comment: 'To Sam K' })).not.toBe(payeeKey({ payee: null, originalPayee: null, comment: 'To Alex P' }));
+  });
+
+  it('lines with no payee are not one big payee: each description has its own history', async () => {
+    const toSam = (over: Partial<Transaction> = {}) => tx({ payee: null, originalPayee: null, comment: 'To Sam K', ...over });
+    const past = [
+      ...[1, 2, 3].map(() => toSam({ viewed: true, tag: [OUT], date: '2026-08-01' })),
+      ...[1, 2, 3, 4].map(() => tx({ payee: null, originalPayee: null, comment: 'Card fee', viewed: true, tag: [EMOJI], date: '2026-08-01' })),
+    ];
+    const { deps, saved } = setup([toSam()], past);
+    const requests = jev();
+    await scan(deps, new Set());
+    expect(requests).toEqual([]); // habit, no AI
+    expect(saved[0]).toMatchObject({ tag: [OUT], viewed: true, comment: 'To Sam K' });
   });
 
   it('mixed history is not a habit', () => {

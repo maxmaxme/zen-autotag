@@ -32,13 +32,24 @@ export interface Deps {
   log: (msg: string) => void;
 }
 
-/** Same payee across statements: "Glovo 05aug Msh5tfdp", "Www.amazon* Nw4k66f04" → stable key. */
-export function payeeKey(t: Pick<Transaction, 'payee' | 'originalPayee'>): string {
-  return (t.originalPayee || t.payee || '')
+/** Who the money went to or came from. Some bank lines carry no payee, only a description ("To Sam K", "Card fee"). */
+export function counterparty(t: Pick<Transaction, 'payee' | 'originalPayee'> & { comment?: string | null }): string {
+  return t.originalPayee || t.payee || t.comment || '';
+}
+
+/**
+ * Same payee across statements → stable key: "Glovo 05aug Msh5tfdp",
+ * "Www.amazon* Nw4k66f04", "Fee for: BALANCE-5805848335" (any token with a
+ * long number in it is a reference, not a name).
+ */
+export function payeeKey(t: Parameters<typeof counterparty>[0]): string {
+  return counterparty(t)
     .toLowerCase()
     .replace(/[*#]\s*[a-z0-9]{6,}$/, '')
     .replace(/\s\d{2}[a-z]{3}\s+[a-z0-9]+$/, '')
+    .replace(/\S*\d{5,}\S*/g, '')
     .replace(/\s+/g, ' ')
+    .replace(/[\s,:;.-]+$/, '')
     .trim();
 }
 
@@ -70,6 +81,15 @@ export function payeeHistory(t: Transaction, all: readonly Transaction[], tags: 
         typical_amount: sorted[Math.floor(sorted.length / 2)],
       };
     });
+}
+
+/**
+ * Money in from someone you've paid before is a refund (or paying you back),
+ * not income — in ZenMoney it goes to a spending category, as a return.
+ */
+export function paidBefore(t: Transaction, all: readonly Transaction[]): boolean {
+  const key = payeeKey(t);
+  return all.some((o) => o.id !== t.id && o.outcome > 0 && !isTransfer(o) && o.date <= t.date && payeeKey(o) === key);
 }
 
 /** The category this payee always gets, if the history is that clear-cut. */
@@ -218,7 +238,7 @@ export function newTransactions(transactions: readonly Transaction[], startDate:
       !isTransfer(t) &&
       t.date >= startDate &&
       (t.outcome > 0 || t.income > 0) &&
-      Boolean(t.payee || t.originalPayee) &&
+      Boolean(counterparty(t)) &&
       !handled.has(t.id),
   );
 }
@@ -244,6 +264,7 @@ async function choose(
   t: Transaction,
   state: Record<string, unknown>,
   hasReceipt: boolean,
+  options: Option[],
 ): Promise<{ pick: Choice; habitual: boolean } | null> {
   const history = payeeHistory(t, ctx.all, ctx.tags);
   const usual = hasReceipt ? null : habit(history);
@@ -254,7 +275,7 @@ async function choose(
     const pick = await classify(
       deps.jevToken,
       { ...state, how_i_filed_this_payee_before: history.map(({ tagId: _, ...h }) => h) },
-      categoryOptions(t.outcome === 0, ctx.tags, deps.hints),
+      options,
     );
     return { pick, habitual: false };
   } catch (err) {
@@ -269,6 +290,8 @@ async function choose(
 /** The facts about one transaction: its receipt (if any), account and what Jev is shown. */
 interface Facts {
   income: boolean;
+  /** Money in that is really money back: offered spending categories. */
+  refund: boolean;
   merchant: Merchant | undefined;
   receipt: Receipt | null;
   account: { title: string; symbol: string } | undefined;
@@ -277,21 +300,23 @@ interface Facts {
 
 function gather(ctx: Context, t: Transaction): Facts {
   const income = t.outcome === 0;
+  const refund = income && paidBefore(t, ctx.all);
   const merchant = MERCHANTS.find((m) => m.payee.test(t.originalPayee || t.payee || ''));
   const receipts = merchant ? (ctx.receipts.get(merchant) ?? []) : [];
   const receipt = merchant ? receiptFor({ cents: cents(t), day: t.date }, receipts, merchant.maxDaysApart) : null;
   const account = ctx.accounts.get(income ? t.incomeAccount : t.outcomeAccount);
   const state = {
-    payee: t.originalPayee || t.payee,
+    payee: counterparty(t),
     direction: income ? 'money in' : 'money out',
     amount: cents(t) / 100,
     account: account?.title ?? '',
     date: `${t.date} (${weekday(t.date)})`,
     ...(t.comment ? { bank_description: t.comment } : {}),
+    ...(refund ? { looks_like: 'a refund: money back from a payee I have paid before' } : {}),
     ...(merchant ? { purchased_via: merchant.context } : {}),
     ...(receipt ? { receipt: { store: receipt.store, items: receipt.items } } : {}),
   };
-  return { income, merchant, receipt, account, state };
+  return { income, refund, merchant, receipt, account, state };
 }
 
 function notice(deps: Deps, ctx: Context, t: Transaction, f: Facts, category: { id: string | null; probability: number; kept: boolean }, alternatives: ReturnType<typeof suggestions>) {
@@ -314,7 +339,8 @@ function notice(deps: Deps, ctx: Context, t: Transaction, f: Facts, category: { 
 
 async function decide(deps: Deps, ctx: Context, t: Transaction): Promise<Decision | null> {
   const f = gather(ctx, t);
-  const chosen = await choose(deps, ctx, t, f.state, f.receipt !== null);
+  const options = categoryOptions(f.income && !f.refund, ctx.tags, deps.hints);
+  const chosen = await choose(deps, ctx, t, f.state, f.receipt !== null, options);
   if (!chosen) {
     return null;
   }

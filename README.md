@@ -14,6 +14,9 @@ ZenMoney that you haven't viewed yet, and for each one:
    filed this payee before, optional hints for categories whose names don't
    explain themselves — and, for merchants whose charges all look alike, the
    **receipt from your mailbox** (Glovo, Amazon): store and line items.
+   A bank line with no payee is known by its description ("To Sam K").
+   Money in from a payee you've paid before is treated as a refund and
+   offered spending categories — in ZenMoney that books it as a return.
 3. The transaction gets the category and is **marked viewed**. Marking it
    viewed is also how the next pass knows it's done, so the service stores
    nothing about transactions.
