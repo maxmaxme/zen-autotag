@@ -1,0 +1,29 @@
+{
+  "name": "zen-receipts",
+  "version": "0.1.0",
+  "description": "Categorise ZenMoney transactions from emailed receipts (Glovo first) — self-hosted",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "dependencies": {
+    "imapflow": "^2.2.4",
+    "mailparser": "^3.9.34",
+    "pino": "^10.4.0"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^24.19.1",
+    "@vitest/coverage-v8": "^5.0.3",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
