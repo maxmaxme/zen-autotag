@@ -48,8 +48,6 @@ the start date and your category hints:
 { "startDate": "2026-10-04", "hints": { "<category as shown, e.g. Parent → Child>": "plain words: what goes there" } }
 ```
 
-Nothing about your categories, shops or spending is in this repository.
-
 | File | Does |
 | --- | --- |
 | `src/main.ts` | env, config, the loop, error alerts to Telegram |
