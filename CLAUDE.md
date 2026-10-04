@@ -89,5 +89,8 @@ localised), Gmail search syntax via `X-GM-RAW` (matches whole words).
 
 Append to `MERCHANTS` in `src/receipts.ts`: payee regex, context for Jev,
 Gmail queries, `maxDaysApart` (charge vs email day), and parsers returning
-`{ store, items, totalCents, day }`. Add a fixture that mirrors the real
-template's structure and a test for the total, the items and a near-miss.
+`{ store, items, totalCents, day }`. Parse the HTML with `node-html-parser`
+(selectors, `cellAfter(root, 'Total')`), not regexes over markup — anyone can
+email a look-alike receipt, and the parser stays linear on any input; keep
+regexes for short plain strings like amounts. Add a fixture that mirrors the
+real template's structure and a test for the total, the items and a near-miss.

@@ -1,3 +1,4 @@
+import { parse, type HTMLElement } from 'node-html-parser';
 import type { Email } from './gmail.ts';
 
 /** What a receipt adds to a charge: where it was bought and what. */
@@ -40,77 +41,42 @@ function euroCents(raw: string): number | null {
   return Number((m[1] ?? '0').replaceAll(/[.,]/g, '')) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
-const ENTITIES: Record<string, string> = {
-  amp: '&',
-  lt: '<',
-  gt: '>',
-  quot: '"',
-  apos: "'",
-  nbsp: ' ',
-  euro: '€',
-  reg: '®',
-  copy: '©',
-  trade: '™',
-  iexcl: '¡',
-  iquest: '¿',
-  ordm: 'º',
-  ordf: 'ª',
-  szlig: 'ß',
-  aelig: 'æ',
-  oslash: 'ø',
-};
-/** &eacute; &ntilde; &Uuml; … — a letter plus a combining mark, composed. */
-const ACCENTS: Record<string, string> = {
-  acute: '\u0301',
-  grave: '\u0300',
-  tilde: '\u0303',
-  uml: '\u0308',
-  circ: '\u0302',
-  cedil: '\u0327',
-  ring: '\u030a',
-};
+// Receipts are read as HTML documents, not with regexes over markup: the
+// parser is linear on any input (anyone can email a look-alike receipt) and
+// the rules below name what they look for — a cell, its neighbour, a class.
 
-function text(html: string): string {
-  return html
-    .replaceAll(/<[^<>]*>/g, ' ') // a tag separates words: "</p><p>" must not glue paragraphs
-    .replaceAll(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replaceAll(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(Number.parseInt(n, 16)))
-    .replaceAll(/&([a-z])(acute|grave|tilde|uml|circ|cedil|ring);/gi, (_, l: string, mark: string) =>
-      `${l}${ACCENTS[mark.toLowerCase()]}`.normalize('NFC'),
-    )
-    .replaceAll(/&([a-z]+);/gi, (all, name: string) => ENTITIES[name] ?? ENTITIES[name.toLowerCase()] ?? all)
-    .replaceAll(/\s+/g, ' ')
-    .trim();
+/** The element's text, entities decoded, whitespace collapsed. */
+function textOf(el: HTMLElement | null | undefined): string {
+  return (el?.text ?? '').replaceAll(/\s+/g, ' ').trim();
 }
 
-// Every pattern below is bounded ({0,n}, not * or +) where it could backtrack:
-// anyone can email a look-alike receipt, and a crafted one must not hang a scan.
+/** The value next to a label cell: `<td>Total</td><td>40,48 €</td>` → "40,48 €". */
+function cellAfter(root: HTMLElement, label: string): string | null {
+  const cell = root.querySelectorAll('td').find((td) => textOf(td) === label);
+  return cell?.nextElementSibling ? textOf(cell.nextElementSibling) : null;
+}
 
 /** Glovo "Details of your order" — sent after delivery, so the total is final. */
 function parseGlovoOrder(email: Email): Receipt | null {
   if (!/@glovoapp\.com/i.test(email.from) || !/details of your order/i.test(email.subject)) {
     return null;
   }
-  const store = /receipt from\s{0,20}<strong>([^<]{1,200})<\/strong>/i.exec(email.html)?.[1];
-  // The bold grand total: `<td>Total</td><td>40,48 €</td>` ("Total taxable base" doesn't match `>Total<`).
-  const total =
-    />\s{0,20}Total\s{0,20}<\/td>\s{0,20}<td[^<>]{0,200}>\s{0,20}([\d.,\s]{1,20}?)\s{0,20}(?:€|&euro;)/i.exec(
-      email.html,
-    )?.[1];
+  const root = parse(email.html);
+  const store = textOf(root.querySelector('td.header__subtitle strong'));
+  // The bold grand total ("Total taxable base …" is a different cell).
+  const total = cellAfter(root, 'Total');
   const totalCents = total ? euroCents(total) : null;
   if (!store || totalCents === null) {
     return null;
   }
-  const items = [
-    // The name is the product cell's first plain <td>; an item that wasn't available
-    // has it as <td class="strikethrough"> instead — not charged, so not matched.
-    ...email.html.matchAll(
-      /<strong>(\d{1,4})x<\/strong><\/td>\s{0,50}<td class="product">\s{0,50}<table[^<>]{0,300}>\s{0,50}<tr>\s{0,50}<td>([^<]{1,500})<\/td>/g,
-    ),
-  ]
-    .map((m) => `${m[1]}x ${text(m[2] ?? '')}`)
-    .filter((s) => s.length > 3);
-  return { store: text(store), items, totalCents, day: localDay(email.date) };
+  const items = root.querySelectorAll('td.product').flatMap((product) => {
+    // The name is the first cell inside; an item the shop didn't have is struck
+    // through there ("Not available — you weren't charged") and isn't in the total.
+    const name = product.querySelector('td');
+    const qty = /^(\d+)x$/.exec(textOf(product.previousElementSibling))?.[1];
+    return name && qty && !name.classList.contains('strikethrough') && textOf(name) ? [`${qty}x ${textOf(name)}`] : [];
+  });
+  return { store, items, totalCents, day: localDay(email.date) };
 }
 
 /** PayPal's receipt for the Glovo Prime membership (Glovo itself sends none). */
@@ -119,7 +85,7 @@ function parseGlovoPrime(email: Email): Receipt | null {
     return null;
   }
   // Subject: "GLOVOAPP23 SL: €7.99 EUR"
-  const amount = /:\s*(?:€|EUR)?\s*([\d.,]+)/.exec(email.subject.replaceAll(/[  ]/g, ' '))?.[1];
+  const amount = /:\s*(?:€|EUR)?\s*([\d.,]+)/.exec(email.subject.replaceAll(/[  ]/g, ' '))?.[1];
   const totalCents = amount ? euroCents(amount) : null;
   if (totalCents === null) {
     return null;
@@ -132,35 +98,44 @@ function parseGlovoPrime(email: Email): Receipt | null {
   };
 }
 
-/** Amazon "Ordered:" / "Dispatched:" emails: linked item titles, then "Quantity: N"; then the total. */
+/** Amazon "Ordered:" / "Dispatched:" emails: each item is a linked title, then "Quantity: N"; then the total. */
 function parseAmazonOrder(email: Email): Receipt | null {
   if (!/@amazon\./i.test(email.from) || !/^(ordered|dispatched|shipped)\b/i.test(email.subject)) {
     return null;
   }
-  const total =
-    />\s{0,20}Total\s{0,20}<\/td>\s{0,20}<td[^<>]{0,200}>(?:<[^<>]{0,200}>|\s){0,20}€\s{0,5}([\d.,]{1,20})/i.exec(
-      email.html,
-    )?.[1];
+  const root = parse(email.html);
+  const total = cellAfter(root, 'Total');
   const totalCents = total ? euroCents(total) : null;
   if (totalCents === null) {
     return null;
   }
-  const items = [
-    ...email.html.matchAll(/<a [^<>]{0,1000}>([^<]{3,300})<\/a>(?:(?!<a )[\s\S]){0,4000}?Quantity:\s{0,20}(\d{1,4})/g),
-  ].map((m) => `${m[2]}x ${text(m[1] ?? '')}`);
+  const items: string[] = [];
+  let title: string | null = null; // the last link seen: an item's title if a quantity follows
+  for (const el of root.querySelectorAll('a, span')) {
+    const quantity = /^Quantity: (\d+)$/.exec(textOf(el))?.[1];
+    if (el.tagName === 'A') {
+      title = textOf(el).length >= 3 ? textOf(el) : null;
+    } else if (quantity && title) {
+      items.push(`${quantity}x ${title}`);
+      title = null;
+    }
+  }
   return { store: 'Amazon', items, totalCents, day: localDay(email.date) };
 }
 
-/** Amazon refund notice: "Item: …" and the amount credited back. */
+/** Amazon refund notice: "Item: …" lines and the amount credited back. */
 function parseAmazonRefund(email: Email): Receipt | null {
   if (!/@amazon\./i.test(email.from) || !/^refund\b/i.test(email.subject)) {
     return null;
   }
-  const body = text(email.html);
-  const items = [...body.matchAll(/Item:\s{0,20}(.{1,300}?)(?=\s+(?:Item:|Your refund|Quantity))/g)].map(
-    (m) => `1x ${m[1]?.trim()}`,
-  );
-  const amount = /credited as follows:.{0,300}?:\s{0,20}([\d.,]{1,20})\s{0,5}€/i.exec(body)?.[1];
+  const lines = parse(email.html)
+    .structuredText.split('\n')
+    .map((l) => l.replaceAll(/\s+/g, ' ').trim());
+  const items = lines.flatMap((l) => (l.startsWith('Item: ') ? [`1x ${l.slice('Item: '.length)}`] : []));
+  // "Your refund is being credited as follows:" then "Visa Credit Card […]: 7,99 €".
+  const from = lines.findIndex((l) => /credited as follows/i.test(l));
+  const credited = from === -1 ? undefined : lines.slice(from).find((l) => /: ?[\d.,]+ ?€$/.test(l));
+  const amount = credited ? /([\d.,]+) ?€$/.exec(credited)?.[1] : undefined;
   const totalCents = amount ? euroCents(amount) : null;
   return totalCents === null ? null : { store: 'Amazon (refund)', items, totalCents, day: localDay(email.date) };
 }

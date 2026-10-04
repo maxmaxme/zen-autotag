@@ -21,6 +21,7 @@
   "dependencies": {
     "imapflow": "^2.2.4",
     "mailparser": "^3.9.34",
+    "node-html-parser": "^9.0.4",
     "valibot": "^1.5.0"
   },
   "devDependencies": {

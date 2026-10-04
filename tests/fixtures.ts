@@ -155,6 +155,6 @@ export function amazonRefundEmail(opts: { date: Date; item: string; amount: stri
     subject: 'Refund on order 000-0000000-0000000',
     date: opts.date,
     html: `<p>This refund is for the following item(s):</p><p>Item: ${opts.item}</p><p>Quantity: 1</p>
-<p>Your refund is being credited as follows: Visa Credit Card [expiring on 1/2030]: ${opts.amount} €</p><p>These amounts will be returned to your payment method.</p>`,
+<p>Item Tax Refund: 0,10 €</p><p>Your refund is being credited as follows:</p><p>Visa Credit Card [expiring on 1/2030]: ${opts.amount} €</p><p>These amounts will be returned to your payment method.</p>`,
   };
 }

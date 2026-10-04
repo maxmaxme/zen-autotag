@@ -315,7 +315,13 @@ describe('failures that must not lose or block work', () => {
       total: '5,00',
       products: [],
     });
-    mailbox.emails = [{ ...good, html: good.html.replace('Shop', 'Shop &#99999999;') }, good];
+    const broken = {
+      ...good,
+      get html(): string {
+        throw new RangeError('unreadable');
+      },
+    };
+    mailbox.emails = [broken, good];
     const requests = jev({ choice: 'Food', confidence: 0.9 });
     expect(await scan(deps, new Set())).toBe(1);
     expect(requests[0]!.state.receipt).toMatchObject({ store: 'Shop' });
