@@ -24,11 +24,11 @@ ZenMoney that you haven't viewed yet, and for each one:
    Telegram message — current category, `✓ OK`, the alternatives with their
    probabilities, and the full list. One tap fixes it in ZenMoney.
 
-| Jev's confidence | What happens |
-| --- | --- |
-| ≥ `MIN_CONFIDENCE` (0.8) | applied silently |
-| ≥ `APPLY_CONFIDENCE` (0.5) | applied, and you're asked |
-| lower | category left as it was, and you're asked |
+| Jev's confidence           | What happens                              |
+| -------------------------- | ----------------------------------------- |
+| ≥ `MIN_CONFIDENCE` (0.8)   | applied silently                          |
+| ≥ `APPLY_CONFIDENCE` (0.5) | applied, and you're asked                 |
+| lower                      | category left as it was, and you're asked |
 
 Transfers between your own accounts, transactions you've already viewed and
 anything dated before the first start are never touched.
@@ -54,16 +54,16 @@ the start date and your category hints:
 Categories with no hint are named in one Telegram message (once per run).
 Hints are read at start — restart after editing.
 
-| File | Does |
-| --- | --- |
-| `src/main.ts` | env, config, the loop, error alerts to Telegram |
-| `src/scan.ts` | one pass: new transactions → habit or Jev → save → messages |
-| `src/taps.ts` | button presses: OK / pick / other / back |
+| File              | Does                                                                         |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `src/main.ts`     | env, config, the loop, error alerts to Telegram                              |
+| `src/scan.ts`     | one pass: new transactions → habit or Jev → save → messages                  |
+| `src/taps.ts`     | button presses: OK / pick / other / back                                     |
 | `src/receipts.ts` | merchants (Glovo, Amazon): Gmail queries, parsers, charge ↔ receipt matching |
-| `src/gmail.ts` | IMAP search over "All Mail" |
-| `src/jev.ts` | one Choice question to TypeSafe |
-| `src/zenmoney.ts` | the `/v8/diff/` sync endpoint |
-| `src/telegram.ts` | the few Bot API calls used, callback encoding |
+| `src/gmail.ts`    | IMAP search over "All Mail"                                                  |
+| `src/jev.ts`      | one Choice question to TypeSafe                                              |
+| `src/zenmoney.ts` | the `/v8/diff/` sync endpoint                                                |
+| `src/telegram.ts` | the few Bot API calls used, callback encoding                                |
 
 ## Setup
 
@@ -84,9 +84,8 @@ See [`.env.example`](.env.example).
 ## Development
 
 ```bash
-npm install
-npm run typecheck
-npm test
+npm install             # also sets up the git hooks
+npm run check           # format, lint, typecheck, tests
 node src/main.ts        # reads .env next to package.json
 ```
 

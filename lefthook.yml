@@ -1,0 +1,23 @@
+# Installed by `npm install` (the prepare script). Skip once with LEFTHOOK=0.
+pre-commit:
+  piped: true
+  jobs:
+    - name: format
+      glob: '*.{ts,mjs,json,md,yml,yaml}'
+      run: npx oxfmt --no-error-on-unmatched-pattern {staged_files}
+      stage_fixed: true
+    - name: lint
+      glob: '*.{ts,mjs}'
+      run: npx oxlint --deny-warnings {staged_files}
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: format
+      run: npm run format:check
+    - name: lint
+      run: npm run lint
+    - name: typecheck
+      run: npm run typecheck
+    - name: test
+      run: npm test

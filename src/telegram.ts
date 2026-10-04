@@ -20,7 +20,11 @@ export interface Tap {
   data: string;
 }
 
-const ResponseSchema = v.object({ ok: v.boolean(), result: v.optional(v.unknown()), description: v.optional(v.string()) });
+const ResponseSchema = v.object({
+  ok: v.boolean(),
+  result: v.optional(v.unknown()),
+  description: v.optional(v.string()),
+});
 
 const KeyboardSchema = v.array(v.array(v.object({ text: v.string(), callback_data: v.optional(v.string(), '') })));
 
@@ -76,7 +80,11 @@ export class Telegram {
   async taps(timeoutSec: number): Promise<Tap[]> {
     const updates = v.parse(
       UpdatesSchema,
-      await this.call('getUpdates', { offset: this.offset, timeout: timeoutSec, allowed_updates: ['callback_query'] }, (timeoutSec + 10) * 1000),
+      await this.call(
+        'getUpdates',
+        { offset: this.offset, timeout: timeoutSec, allowed_updates: ['callback_query'] },
+        (timeoutSec + 10) * 1000,
+      ),
     );
     const taps: Tap[] = [];
     for (const u of updates) {
@@ -90,7 +98,9 @@ export class Telegram {
           chatId: message.chat.id,
           messageId: message.message_id,
           text: message.text,
-          keyboard: message.reply_markup.inline_keyboard.map((row) => row.map((b) => ({ text: b.text, data: b.callback_data }))),
+          keyboard: message.reply_markup.inline_keyboard.map((row) =>
+            row.map((b) => ({ text: b.text, data: b.callback_data })),
+          ),
           data,
         });
       }

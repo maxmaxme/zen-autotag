@@ -16,11 +16,18 @@ arm64) on every push to `main`. Deployment is someone else's job.
 ## Commands
 
 ```bash
-npm install
-npm run typecheck                 # tsc --noEmit
+npm install                       # also installs git hooks (lefthook)
+npm run check                     # format:check + lint + typecheck + test — what CI runs
+npm run format                    # oxfmt
+npm run lint                      # oxlint (incl. Sonar cognitive complexity)
 npm test                          # vitest run
 DRY_RUN=1 node src/main.ts        # reads .env next to package.json
 ```
+
+Hooks: pre-commit formats and lints the staged files, pre-push runs the
+full check. The complexity rule is loaded on its own from
+`tools/oxlint-complexity.mjs` — the whole eslint-plugin-sonarjs needs the
+TypeScript JS API, which TypeScript 7 doesn't have.
 
 ## Critical conventions
 
@@ -32,7 +39,8 @@ messages carry their own state (UUIDs packed as 22-char base64url in
 `callback_data`, ≤64 bytes; the "Other" list keeps the original buttons
 above « Back), `config.json` holds only startDate + hints.
 
-**Functions stay under Sonar's cognitive complexity of 15** — split into
+**Functions stay under Sonar's cognitive complexity of 15** (`npm run lint`
+enforces it) — split into
 named steps (see `scan.ts`: newTransactions → loadContext → gather → choose
 → decide → notice) rather than growing one function.
 

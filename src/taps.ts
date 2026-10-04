@@ -33,7 +33,10 @@ export async function handleTap(deps: TapDeps, tap: Tap): Promise<void> {
   const backAt = tap.keyboard.findIndex((row) => row.some((b) => decode(b.data)?.kind === 'back'));
   if (action.kind === 'back') {
     const original = backAt >= 0 ? tap.keyboard.slice(0, backAt) : tap.keyboard;
-    await deps.telegram.edit(tap, text, [...original, [{ text: 'Other category…', data: encode({ kind: 'other', tx: action.tx }) }]]);
+    await deps.telegram.edit(tap, text, [
+      ...original,
+      [{ text: 'Other category…', data: encode({ kind: 'other', tx: action.tx }) }],
+    ]);
     await deps.telegram.answer(tap);
     return;
   }
@@ -54,10 +57,11 @@ export async function handleTap(deps: TapDeps, tap: Tap): Promise<void> {
 
   if (action.kind === 'other') {
     // Money in can be a refund, which goes to a spending category — so it gets both lists.
-    const both = tx.outcome === 0 ? [...categoryOptions(true, tags, deps.hints), ...categoryOptions(false, tags, deps.hints)] : [];
+    const both =
+      tx.outcome === 0 ? [...categoryOptions(true, tags, deps.hints), ...categoryOptions(false, tags, deps.hints)] : [];
     const options = (both.length > 0 ? both : categoryOptions(false, tags, deps.hints))
       .filter((o, i, all) => all.findIndex((x) => x.id === o.id) === i)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .toSorted((a, b) => a.name.localeCompare(b.name));
     const original = tap.keyboard.filter((row) => !row.some((b) => decode(b.data)?.kind === 'other'));
     const rows: Keyboard = [...original, [{ text: '« Back', data: encode({ kind: 'back', tx: tx.id }) }]];
     for (const o of options) {

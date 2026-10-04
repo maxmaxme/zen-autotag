@@ -1,18 +1,21 @@
 {
   "name": "zen-autotag",
   "version": "0.1.0",
-  "description": "Categorises new ZenMoney transactions with an AI classifier (payee habits, receipts from Gmail) and asks in Telegram only when unsure — self-hosted",
   "private": true,
+  "description": "Categorises new ZenMoney transactions with an AI classifier (payee habits, receipts from Gmail) and asks in Telegram only when unsure — self-hosted",
   "type": "module",
   "scripts": {
-    "start": "node src/index.ts",
+    "start": "node src/main.ts",
     "typecheck": "tsc --noEmit",
+    "lint": "oxlint --deny-warnings",
+    "lint:fix": "oxlint --fix",
+    "format": "oxfmt",
+    "format:check": "oxfmt --check",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
-  },
-  "engines": {
-    "node": ">=24.0.0"
+    "test:coverage": "vitest run --coverage",
+    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
+    "prepare": "lefthook install"
   },
   "dependencies": {
     "imapflow": "^2.2.4",
@@ -23,7 +26,14 @@
     "@types/mailparser": "^3.9.0",
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
+    "eslint-plugin-sonarjs": "^4.2.2",
+    "lefthook": "^2.1.16",
+    "oxfmt": "^0.71.0",
+    "oxlint": "^1.86.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   }
 }

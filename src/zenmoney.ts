@@ -120,7 +120,8 @@ export class ZenMoney {
     const parsed = v.safeParse(DiffSchema, parseJson(text));
     const err = parsed.success ? parsed.output.error : undefined;
     if (!res.ok || err) {
-      const msg = typeof err === 'object' ? `${err.code ?? ''} ${err.message ?? ''}`.trim() : (err ?? text.slice(0, 200));
+      const msg =
+        typeof err === 'object' ? `${err.code ?? ''} ${err.message ?? ''}`.trim() : (err ?? text.slice(0, 200));
       throw new ZenMoneyError(res.status, `ZenMoney ${res.status}: ${msg}`);
     }
     if (!parsed.success) {
@@ -129,7 +130,6 @@ export class ZenMoney {
     return parsed.output;
   }
 }
-
 
 /** "Parent → Child", the way the user sees categories (stray spaces in titles dropped). */
 export function tagLabel(tag: Tag, tags: readonly Tag[]): string {

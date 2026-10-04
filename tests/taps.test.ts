@@ -48,7 +48,14 @@ function setup(known: Transaction[] = [transaction]) {
     dryRun: false,
   };
   const keyboard = choiceKeyboard(txId, [{ id: ID(2), label: 'Gifts', probability: 0.35 }]);
-  const tap = (data: string, kb: Keyboard = keyboard, chatId = 42): Tap => ({ id: 'q', chatId, messageId: 7, text: TEXT, keyboard: kb, data });
+  const tap = (data: string, kb: Keyboard = keyboard, chatId = 42): Tap => ({
+    id: 'q',
+    chatId,
+    messageId: 7,
+    text: TEXT,
+    keyboard: kb,
+    data,
+  });
   return { deps, saved, edits, answers, tap, keyboard };
 }
 
@@ -110,7 +117,12 @@ describe('button taps', () => {
   });
 
   it('every button fits Telegram’s 64-byte callback limit', () => {
-    for (const data of [encode({ kind: 'set', tx: txId, tag: ID(2) }), encode({ kind: 'other', tx: txId }), encode({ kind: 'back', tx: txId }), encode({ kind: 'ok', tx: txId })]) {
+    for (const data of [
+      encode({ kind: 'set', tx: txId, tag: ID(2) }),
+      encode({ kind: 'other', tx: txId }),
+      encode({ kind: 'back', tx: txId }),
+      encode({ kind: 'ok', tx: txId }),
+    ]) {
       expect(Buffer.byteLength(data)).toBeLessThanOrEqual(64);
     }
   });

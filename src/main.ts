@@ -20,9 +20,9 @@ try {
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
 function env(name: string, fallback?: string): string {
-  const v = process.env[name];
-  if (v) {
-    return v;
+  const value = process.env[name];
+  if (value) {
+    return value;
   }
   if (fallback !== undefined) {
     return fallback;

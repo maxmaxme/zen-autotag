@@ -44,7 +44,9 @@ export function glovoOrderEmail(opts: {
         [
           p.options ? `<tr><td style="color:#6E6E6E; font-size:0.875em; padding-top:3px">${p.options}</td></tr>` : '',
           p.promo ? `<tr><td><span class="product__promotion">${p.promo}</span></td></tr>` : '',
-          p.was ? `<tr><td align="right" class="product__original-price" style="white-space: nowrap">${p.was} €</td></tr>` : '',
+          p.was
+            ? `<tr><td align="right" class="product__original-price" style="white-space: nowrap">${p.was} €</td></tr>`
+            : '',
         ].join('\n'),
       ),
     )
@@ -99,10 +101,19 @@ export function paypalReceiptEmail(opts: { amount: string; item: string; date: D
 }
 
 /** Amazon "Ordered:" / "Dispatched:" — item links, "Quantity: N", per-item aria-label prices, then the total. */
-export function amazonOrderEmail(opts: { kind: 'Ordered' | 'Dispatched'; date: Date; total: string; items: [string, number, string][] }): Email {
+export function amazonOrderEmail(opts: {
+  kind: 'Ordered' | 'Dispatched';
+  date: Date;
+  total: string;
+  items: [string, number, string][];
+}): Email {
   const items = opts.items
     .map(
-      ([name, qty, price]) => `<tr><td align="left"><div><span class="rio-text rio-text-544"><a href="https://www.amazon.es/dp/TEST" target="_blank" >${name}</a></span></div></td></tr>
+      ([
+        name,
+        qty,
+        price,
+      ]) => `<tr><td align="left"><div><span class="rio-text rio-text-544"><a href="https://www.amazon.es/dp/TEST" target="_blank" >${name}</a></span></div></td></tr>
 <tr><td align="left" class="rio-spacer"><div aria-hidden="true">&nbsp;</div></td></tr>
 <tr><td align="left"><div><span class="rio-text rio-text-545">Sold by Amazon.es</span></div></td></tr>
 <tr><td align="left"><div><span class="rio-text rio-text-548">Quantity: ${qty}</span></div></td></tr>

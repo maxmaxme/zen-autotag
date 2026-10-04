@@ -69,10 +69,10 @@ export function payeeHistory(t: Transaction, all: readonly Transaction[], tags: 
     }
   }
   return [...byTag]
-    .sort((a, b) => b[1].length - a[1].length)
+    .toSorted((a, b) => b[1].length - a[1].length)
     .slice(0, 6)
     .map(([tagId, amounts]) => {
-      const sorted = [...amounts].sort((a, b) => a - b);
+      const sorted = amounts.toSorted((a, b) => a - b);
       const tag = tags.find((x) => x.id === tagId);
       return {
         tagId,
@@ -121,7 +121,10 @@ async function receiptsFor(deps: Deps, charges: readonly Transaction[]): Promise
     return out;
   }
   for (const m of MERCHANTS) {
-    const days = charges.filter((t) => m.payee.test(t.originalPayee || t.payee || '')).map((t) => t.date).sort();
+    const days = charges
+      .filter((t) => m.payee.test(t.originalPayee || t.payee || ''))
+      .map((t) => t.date)
+      .toSorted();
     const first = days[0];
     const last = days.at(-1);
     if (!first || !last) {
@@ -174,7 +177,9 @@ export function messageHtml(p: {
   kept: boolean;
   dryRun: boolean;
 }): string {
-  const lines = [`<b>${escapeHtml(p.title)}</b> · ${escapeHtml(p.money)} · ${escapeHtml(p.account)} · ${shortDate(p.day)}`];
+  const lines = [
+    `<b>${escapeHtml(p.title)}</b> · ${escapeHtml(p.money)} · ${escapeHtml(p.account)} · ${shortDate(p.day)}`,
+  ];
   const details = [p.via ? `via ${p.via}` : '', p.items.slice(0, 3).join('; ') + (p.items.length > 3 ? ' …' : '')]
     .filter(Boolean)
     .join(' · ');
@@ -207,7 +212,10 @@ export function suggestions(pick: Choice, currentId: string | null, labels: Map<
 }
 
 /** ✓ OK keeps what's there; one button per alternative (full "Parent → Child" names fit); then the full list. */
-export function choiceKeyboard(txId: string, alternatives: { id: string; label: string; probability: number }[]): Keyboard {
+export function choiceKeyboard(
+  txId: string,
+  alternatives: { id: string; label: string; probability: number }[],
+): Keyboard {
   return [
     [{ text: '✓ OK', data: encode({ kind: 'ok', tx: txId }) }],
     ...alternatives.map((a) => [
@@ -234,7 +242,11 @@ interface Decision {
 }
 
 /** New, unviewed spending or income since the start date that we haven't handled yet. */
-export function newTransactions(transactions: readonly Transaction[], startDate: string, handled: Set<string>): Transaction[] {
+export function newTransactions(
+  transactions: readonly Transaction[],
+  startDate: string,
+  handled: Set<string>,
+): Transaction[] {
   return transactions.filter(
     (t) =>
       !t.viewed &&
@@ -254,7 +266,10 @@ async function loadContext(deps: Deps, todo: readonly Transaction[]): Promise<Co
     tags: everything.tags,
     labels: new Map(everything.tags.map((t) => [t.id, tagLabel(t, everything.tags)])),
     accounts: new Map(
-      everything.accounts.map((a) => [a.id, { title: a.title, symbol: (a.instrument !== null && symbols.get(a.instrument)) || '' }]),
+      everything.accounts.map((a) => [
+        a.id,
+        { title: a.title, symbol: (a.instrument !== null && symbols.get(a.instrument)) || '' },
+      ]),
     ),
     receipts: await receiptsFor(deps, todo),
   };
@@ -285,7 +300,9 @@ async function choose(
     if (err instanceof JevError && (err.status === 401 || err.status === 403)) {
       throw err;
     }
-    deps.log(`classify failed for ${String(state.payee)}, retrying next pass: ${err instanceof Error ? err.message : String(err)}`);
+    deps.log(
+      `classify failed for ${String(state.payee)}, retrying next pass: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return null;
   }
 }
@@ -322,7 +339,14 @@ function gather(ctx: Context, t: Transaction): Facts {
   return { income, refund, merchant, receipt, account, state };
 }
 
-function notice(deps: Deps, ctx: Context, t: Transaction, f: Facts, category: { id: string | null; probability: number; kept: boolean }, alternatives: ReturnType<typeof suggestions>) {
+function notice(
+  deps: Deps,
+  ctx: Context,
+  t: Transaction,
+  f: Facts,
+  category: { id: string | null; probability: number; kept: boolean },
+  alternatives: ReturnType<typeof suggestions>,
+) {
   return {
     html: messageHtml({
       title: f.receipt ? f.receipt.store : displayPayee(String(f.state.payee)),
@@ -383,7 +407,12 @@ async function reportUnhinted(deps: Deps, tags: readonly Tag[]): Promise<void> {
   const options = [...categoryOptions(false, tags, deps.hints), ...categoryOptions(true, tags, deps.hints)];
   const fresh = [...new Set(options.filter((o) => !o.hint && !reported.has(o.name)).map((o) => o.name))];
   if (fresh.length > 0) {
-    await deps.telegram.send(deps.chatId, `No hint in config.json for: ${fresh.map((n) => `<b>${escapeHtml(n)}</b>`).join(', ')}`, null, false);
+    await deps.telegram.send(
+      deps.chatId,
+      `No hint in config.json for: ${fresh.map((n) => `<b>${escapeHtml(n)}</b>`).join(', ')}`,
+      null,
+      false,
+    );
     fresh.forEach((n) => reported.add(n));
   }
 }

@@ -85,6 +85,6 @@ export async function classify(token: string, state: unknown, options: readonly 
   const ranked = Object.entries(answer.probabilities)
     .map(([key, probability]) => ({ id: keyToId.get(key) ?? '', probability }))
     .filter((r) => r.id)
-    .sort((a, b) => b.probability - a.probability);
+    .toSorted((a, b) => b.probability - a.probability);
   return { id, confidence: answer.confidence, ranked };
 }

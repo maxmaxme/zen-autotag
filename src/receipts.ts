@@ -41,11 +41,34 @@ export function euroCents(raw: string): number | null {
 }
 
 const ENTITIES: Record<string, string> = {
-  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', euro: '€', reg: '®', copy: '©', trade: '™', iexcl: '¡', iquest: '¿',
-  ordm: 'º', ordf: 'ª', szlig: 'ß', aelig: 'æ', oslash: 'ø',
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  euro: '€',
+  reg: '®',
+  copy: '©',
+  trade: '™',
+  iexcl: '¡',
+  iquest: '¿',
+  ordm: 'º',
+  ordf: 'ª',
+  szlig: 'ß',
+  aelig: 'æ',
+  oslash: 'ø',
 };
 /** &eacute; &ntilde; &Uuml; … — a letter plus a combining mark, composed. */
-const ACCENTS: Record<string, string> = { acute: '\u0301', grave: '\u0300', tilde: '\u0303', uml: '\u0308', circ: '\u0302', cedil: '\u0327', ring: '\u030a' };
+const ACCENTS: Record<string, string> = {
+  acute: '\u0301',
+  grave: '\u0300',
+  tilde: '\u0303',
+  uml: '\u0308',
+  circ: '\u0302',
+  cedil: '\u0327',
+  ring: '\u030a',
+};
 
 function text(html: string): string {
   return html
@@ -72,7 +95,9 @@ export function parseGlovoOrder(email: Email): Receipt | null {
   if (!store || totalCents === null) {
     return null;
   }
-  const items = [...email.html.matchAll(/<strong>(\d+)x<\/strong><\/td>\s*<td class="product">[\s\S]*?<td>([\s\S]*?)<\/td>/g)]
+  const items = [
+    ...email.html.matchAll(/<strong>(\d+)x<\/strong><\/td>\s*<td class="product">[\s\S]*?<td>([\s\S]*?)<\/td>/g),
+  ]
     .map((m) => `${m[1]}x ${text(m[2] ?? '')}`)
     .filter((s) => s.length > 3);
   return { store: text(store), items, totalCents, day: localDay(email.date) };
@@ -89,7 +114,12 @@ export function parseGlovoPrime(email: Email): Receipt | null {
   if (totalCents === null) {
     return null;
   }
-  return { store: 'Glovo Prime', items: ['1x Glovo Prime membership (monthly)'], totalCents, day: localDay(email.date) };
+  return {
+    store: 'Glovo Prime',
+    items: ['1x Glovo Prime membership (monthly)'],
+    totalCents,
+    day: localDay(email.date),
+  };
 }
 
 /** Amazon "Ordered:" / "Dispatched:" emails: linked item titles, then "Quantity: N"; then the total. */
@@ -114,7 +144,9 @@ export function parseAmazonRefund(email: Email): Receipt | null {
     return null;
   }
   const body = text(email.html);
-  const items = [...body.matchAll(/Item:\s*(.+?)(?=\s+(?:Item:|Your refund|Quantity))/g)].map((m) => `1x ${m[1]?.trim()}`);
+  const items = [...body.matchAll(/Item:\s*(.+?)(?=\s+(?:Item:|Your refund|Quantity))/g)].map(
+    (m) => `1x ${m[1]?.trim()}`,
+  );
   const amount = /credited as follows:.*?:\s*([\d.,]+)\s*€/i.exec(body)?.[1];
   const totalCents = amount ? euroCents(amount) : null;
   return totalCents === null ? null : { store: 'Amazon (refund)', items, totalCents, day: localDay(email.date) };
@@ -163,10 +195,10 @@ export function receiptFor(
   const near = receipts
     .filter((r) => r.totalCents === charge.cents && daysApart(r.day, charge.day) <= maxDays)
     .filter((r) => {
-      const key = `${r.store}|${[...r.items].sort().join(';')}`; // the dispatch email may list items in another order
+      const key = `${r.store}|${r.items.toSorted().join(';')}`; // the dispatch email may list items in another order
       return !seen.has(key) && seen.add(key) !== undefined;
     })
-    .sort((a, b) => daysApart(a.day, charge.day) - daysApart(b.day, charge.day));
+    .toSorted((a, b) => daysApart(a.day, charge.day) - daysApart(b.day, charge.day));
   const [best, next] = near;
   if (!best || (next && daysApart(next.day, charge.day) === daysApart(best.day, charge.day))) {
     return null;

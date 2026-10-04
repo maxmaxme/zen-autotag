@@ -38,26 +38,38 @@ describe('Glovo order receipt', () => {
   });
 
   it('dates the receipt by the Madrid day, which is what the card charge carries', () => {
-    const late = glovo.parse(glovoOrderEmail({ store: 'S', date: new Date('2026-07-01T22:30:00Z'), total: '10,00', products: [] }));
+    const late = glovo.parse(
+      glovoOrderEmail({ store: 'S', date: new Date('2026-07-01T22:30:00Z'), total: '10,00', products: [] }),
+    );
     expect(late?.day).toBe('2026-07-02');
   });
 
   it('handles thousands separators in big orders', () => {
-    const r = glovo.parse(glovoOrderEmail({ store: 'S', date: new Date('2026-07-01T10:00:00Z'), total: '1.234,50', products: [] }));
+    const r = glovo.parse(
+      glovoOrderEmail({ store: 'S', date: new Date('2026-07-01T10:00:00Z'), total: '1.234,50', products: [] }),
+    );
     expect(r?.totalCents).toBe(123450);
   });
 
   it('rejects other Glovo mail rather than guessing', () => {
-    const promo = { ...glovoOrderEmail({ store: 'S', date: new Date(), total: '1,00', products: [] }), subject: 'Your weekly offers' };
+    const promo = {
+      ...glovoOrderEmail({ store: 'S', date: new Date(), total: '1,00', products: [] }),
+      subject: 'Your weekly offers',
+    };
     expect(glovo.parse(promo)).toBeNull();
-    const broken = { ...glovoOrderEmail({ store: 'S', date: new Date(), total: '1,00', products: [] }), html: '<p>new template</p>' };
+    const broken = {
+      ...glovoOrderEmail({ store: 'S', date: new Date(), total: '1,00', products: [] }),
+      html: '<p>new template</p>',
+    };
     expect(glovo.parse(broken)).toBeNull();
   });
 });
 
 describe('Glovo Prime receipt (PayPal)', () => {
   it('reads the membership charge', () => {
-    const r = glovo.parse(paypalReceiptEmail({ amount: '7.99', item: 'GLOVO PRIME', date: new Date('2026-10-03T00:06:07Z') }));
+    const r = glovo.parse(
+      paypalReceiptEmail({ amount: '7.99', item: 'GLOVO PRIME', date: new Date('2026-10-03T00:06:07Z') }),
+    );
     expect(r).toMatchObject({ store: 'Glovo Prime', totalCents: 799, day: '2026-10-03' });
   });
 
@@ -70,7 +82,9 @@ describe('receiptFor', () => {
   const r = (store: string, totalCents: number, day: string) => ({ store, items: [], totalCents, day });
 
   it('finds the receipt when the bank dates the charge a day later', () => {
-    expect(receiptFor({ cents: 4048, day: '2026-09-07' }, [r('A', 4048, '2026-09-06'), r('B', 999, '2026-09-07')])?.store).toBe('A');
+    expect(
+      receiptFor({ cents: 4048, day: '2026-09-07' }, [r('A', 4048, '2026-09-06'), r('B', 999, '2026-09-07')])?.store,
+    ).toBe('A');
   });
 
   it('prefers the same day when the same amount appears on neighbouring days (e.g. a monthly membership)', () => {
@@ -79,11 +93,15 @@ describe('receiptFor', () => {
   });
 
   it('gives up on two same-amount orders the same day instead of picking one at random', () => {
-    expect(receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-03'), r('B', 799, '2026-10-03')])).toBeNull();
+    expect(
+      receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-03'), r('B', 799, '2026-10-03')]),
+    ).toBeNull();
   });
 
   it('does not stretch to a receipt two days away or a cent off', () => {
-    expect(receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-01'), r('B', 798, '2026-10-03')])).toBeNull();
+    expect(
+      receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-01'), r('B', 798, '2026-10-03')]),
+    ).toBeNull();
   });
 });
 
@@ -102,11 +120,18 @@ describe('Amazon receipts', () => {
         ],
       }),
     );
-    expect(r).toEqual({ store: 'Amazon', items: ['1x Item A replacement blades...', '2x Item B & case...'], totalCents: 5798, day: '2026-09-23' });
+    expect(r).toEqual({
+      store: 'Amazon',
+      items: ['1x Item A replacement blades...', '2x Item B & case...'],
+      totalCents: 5798,
+      day: '2026-09-23',
+    });
   });
 
   it('reads a refund as the item and the amount credited back', () => {
-    const r = amazon.parse(amazonRefundEmail({ date: new Date('2026-08-15T15:20:00Z'), item: 'Item C party set', amount: '7,99' }));
+    const r = amazon.parse(
+      amazonRefundEmail({ date: new Date('2026-08-15T15:20:00Z'), item: 'Item C party set', amount: '7,99' }),
+    );
     expect(r).toMatchObject({ store: 'Amazon (refund)', items: ['1x Item C party set'], totalCents: 799 });
   });
 
@@ -118,12 +143,29 @@ describe('Amazon receipts', () => {
   });
 
   it('matches a charge made at dispatch, counting the "Ordered" and "Dispatched" copies of one order once', () => {
-    const order = { kind: 'Ordered' as const, total: '57.98', items: [['Item A', 1, '29.99'], ['Item B', 1, '27.99']] as [string, number, string][] };
+    const order = {
+      kind: 'Ordered' as const,
+      total: '57.98',
+      items: [
+        ['Item A', 1, '29.99'],
+        ['Item B', 1, '27.99'],
+      ] as [string, number, string][],
+    };
     const receipts = [
       amazon.parse(amazonOrderEmail({ ...order, date: new Date('2026-09-24T07:00:00Z') }))!,
-      amazon.parse(amazonOrderEmail({ ...order, items: [...order.items].reverse(), kind: 'Dispatched', date: new Date('2026-09-26T05:00:00Z') }))!,
+      amazon.parse(
+        amazonOrderEmail({
+          ...order,
+          items: order.items.toReversed(),
+          kind: 'Dispatched',
+          date: new Date('2026-09-26T05:00:00Z'),
+        }),
+      )!,
     ];
     // Both copies are a day from the charge: still one order, not a tie.
-    expect(receiptFor({ cents: 5798, day: '2026-09-25' }, receipts, amazon.maxDaysApart)?.items).toEqual(['1x Item A', '1x Item B']);
+    expect(receiptFor({ cents: 5798, day: '2026-09-25' }, receipts, amazon.maxDaysApart)?.items).toEqual([
+      '1x Item A',
+      '1x Item B',
+    ]);
   });
 });
