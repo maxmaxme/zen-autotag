@@ -14,8 +14,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "check": "npm run format:check && npm run lint && npm run typecheck && npm test",
-    "prepare": "lefthook install"
+    "check": "npm run format:check && npm run lint && npm run knip && npm run typecheck && npm test",
+    "prepare": "lefthook install",
+    "knip": "knip"
   },
   "dependencies": {
     "imapflow": "^2.2.4",
@@ -27,6 +28,7 @@
     "@types/node": "^24.19.1",
     "@vitest/coverage-v8": "^5.0.3",
     "eslint-plugin-sonarjs": "^4.2.2",
+    "knip": "^6.39.0",
     "lefthook": "^2.1.16",
     "oxfmt": "^0.71.0",
     "oxlint": "^1.86.0",

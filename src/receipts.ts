@@ -31,7 +31,7 @@ export function localDay(d: Date, timeZone = 'Europe/Madrid'): string {
 }
 
 /** "40,48", "7.99", "1.234,50", "1,234.50" → cents. */
-export function euroCents(raw: string): number | null {
+function euroCents(raw: string): number | null {
   const s = raw.replaceAll(/[\s  €]|EUR/g, '');
   const m = /^(\d{1,3}(?:[.,]\d{3})*|\d+)(?:[.,](\d{1,2}))?$/.exec(s);
   if (!m) {
@@ -84,7 +84,7 @@ function text(html: string): string {
 }
 
 /** Glovo "Details of your order" — sent after delivery, so the total is final. */
-export function parseGlovoOrder(email: Email): Receipt | null {
+function parseGlovoOrder(email: Email): Receipt | null {
   if (!/@glovoapp\.com/i.test(email.from) || !/details of your order/i.test(email.subject)) {
     return null;
   }
@@ -104,7 +104,7 @@ export function parseGlovoOrder(email: Email): Receipt | null {
 }
 
 /** PayPal's receipt for the Glovo Prime membership (Glovo itself sends none). */
-export function parseGlovoPrime(email: Email): Receipt | null {
+function parseGlovoPrime(email: Email): Receipt | null {
   if (!/paypal\./i.test(email.from) || !/glovo/i.test(email.subject) || !/GLOVO PRIME/i.test(email.html)) {
     return null;
   }
@@ -123,7 +123,7 @@ export function parseGlovoPrime(email: Email): Receipt | null {
 }
 
 /** Amazon "Ordered:" / "Dispatched:" emails: linked item titles, then "Quantity: N"; then the total. */
-export function parseAmazonOrder(email: Email): Receipt | null {
+function parseAmazonOrder(email: Email): Receipt | null {
   if (!/@amazon\./i.test(email.from) || !/^(ordered|dispatched|shipped)\b/i.test(email.subject)) {
     return null;
   }
@@ -139,7 +139,7 @@ export function parseAmazonOrder(email: Email): Receipt | null {
 }
 
 /** Amazon refund notice: "Item: …" and the amount credited back. */
-export function parseAmazonRefund(email: Email): Receipt | null {
+function parseAmazonRefund(email: Email): Receipt | null {
   if (!/@amazon\./i.test(email.from) || !/^refund\b/i.test(email.subject)) {
     return null;
   }

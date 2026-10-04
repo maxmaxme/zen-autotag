@@ -87,7 +87,7 @@ export function payeeHistory(t: Transaction, all: readonly Transaction[], tags: 
  * Money in from someone you've paid before is a refund (or paying you back),
  * not income — in ZenMoney it goes to a spending category, as a return.
  */
-export function paidBefore(t: Transaction, all: readonly Transaction[]): boolean {
+function paidBefore(t: Transaction, all: readonly Transaction[]): boolean {
   const key = payeeKey(t);
   return all.some((o) => o.id !== t.id && o.outcome > 0 && !isTransfer(o) && o.date <= t.date && payeeKey(o) === key);
 }
@@ -146,7 +146,7 @@ async function receiptsFor(deps: Deps, charges: readonly Transaction[]): Promise
 }
 
 /** "Www.amazon* N44ou7at4" → "amazon"; dots get a word joiner so Telegram doesn't turn names into links. */
-export function displayPayee(raw: string): string {
+function displayPayee(raw: string): string {
   const name = raw
     .replace(/^www\./i, '')
     .replace(/[*#]\s*[A-Za-z0-9]{6,}$/, '')
@@ -161,7 +161,7 @@ function shortDate(day: string): string {
 }
 
 /** Message lines: the "Category:" line is what taps rewrite. */
-export function messageHtml(p: {
+function messageHtml(p: {
   title: string;
   /** e.g. "−10.99 €" */
   money: string;
@@ -196,12 +196,12 @@ export function messageHtml(p: {
 }
 
 /** Alternatives offered: Jev's categories at or above this probability… */
-export const MIN_SUGGESTION = 0.2;
+const MIN_SUGGESTION = 0.2;
 /** …at most this many. */
 const MAX_SUGGESTIONS = 4;
 
 /** Other likely categories than the current one, most likely first. */
-export function suggestions(pick: Choice, currentId: string | null, labels: Map<string, string>) {
+function suggestions(pick: Choice, currentId: string | null, labels: Map<string, string>) {
   return pick.ranked
     .filter((r) => r.id !== currentId && r.probability >= MIN_SUGGESTION)
     .flatMap((r) => {
@@ -242,11 +242,7 @@ interface Decision {
 }
 
 /** New, unviewed spending or income since the start date that we haven't handled yet. */
-export function newTransactions(
-  transactions: readonly Transaction[],
-  startDate: string,
-  handled: Set<string>,
-): Transaction[] {
+function newTransactions(transactions: readonly Transaction[], startDate: string, handled: Set<string>): Transaction[] {
   return transactions.filter(
     (t) =>
       !t.viewed &&

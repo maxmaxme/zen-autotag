@@ -17,7 +17,8 @@ arm64) on every push to `main`. Deployment is someone else's job.
 
 ```bash
 npm install                       # also installs git hooks (lefthook)
-npm run check                     # format:check + lint + typecheck + test — what CI runs
+npm run check                     # format:check + lint + knip + typecheck + test — what CI runs
+npm run knip                      # unused files, exports, dependencies
 npm run format                    # oxfmt
 npm run lint                      # oxlint (incl. Sonar cognitive complexity)
 npm test                          # vitest run

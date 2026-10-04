@@ -25,14 +25,14 @@ const AccountSchema = v.object({
   title: v.string(),
   instrument: v.nullish(v.number(), null),
 });
-export type Account = v.InferOutput<typeof AccountSchema>;
+type Account = v.InferOutput<typeof AccountSchema>;
 
 const InstrumentSchema = v.object({
   id: v.number(),
   shortTitle: v.string(),
   symbol: v.string(),
 });
-export type Instrument = v.InferOutput<typeof InstrumentSchema>;
+type Instrument = v.InferOutput<typeof InstrumentSchema>;
 
 /** Written back whole (ZenMoney replaces the object), so unknown fields are kept, not stripped. */
 const TransactionSchema = v.looseObject({

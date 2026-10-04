@@ -4,7 +4,7 @@
 import * as v from 'valibot';
 import { parseJson } from './json.ts';
 
-export interface Button {
+interface Button {
   text: string;
   data: string;
 }
@@ -128,11 +128,11 @@ function markup(keyboard: Keyboard) {
 }
 
 // callback_data is capped at 64 bytes, so UUIDs travel as 22-char base64url.
-export function packId(uuid: string): string {
+function packId(uuid: string): string {
   return Buffer.from(uuid.replaceAll('-', ''), 'hex').toString('base64url');
 }
 
-export function unpackId(packed: string): string {
+function unpackId(packed: string): string {
   const h = Buffer.from(packed, 'base64url').toString('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
