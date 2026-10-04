@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { habit, payeeHistory, payeeKey, scan, type Deps } from '../src/scan.ts';
 import type { Keyboard } from '../src/telegram.ts';
 import type { Snapshot, Tag, Transaction } from '../src/zenmoney.ts';
+import { requestBody } from './helpers.ts';
 
 // Neutral, made-up data only (public repo).
 const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -47,7 +48,7 @@ type JevReply = { choice: string; confidence: number; probabilities?: Record<str
 function jev(...replies: JevReply[]) {
   const requests: { state: Record<string, unknown>; criteria: Record<string, string | null> }[] = [];
   vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
-    const body = JSON.parse(String(init.body));
+    const body = JSON.parse(requestBody(init));
     requests.push({ state: body.state, criteria: body.questions.category.criteria });
     const r = replies.shift() ?? { choice: 'Food', confidence: 1 };
     return typeof r === 'number'
@@ -73,10 +74,10 @@ function setup(recent: Transaction[], history: Transaction[] = []) {
     zenmoney: {
       since: async (sec: number) => snapshot(sec === 0 ? [...recent, ...history] : recent),
       save: async (t: Transaction[]) => void saved.push(...t),
-    } as unknown as Deps['zenmoney'],
+    },
     telegram: {
       send: async (_chat: string, html: string, keyboard: Keyboard | null) => void sent.push({ html, keyboard }),
-    } as unknown as Deps['telegram'],
+    },
     chatId: '1',
     jevToken: 't',
     gmail: null,
@@ -119,7 +120,7 @@ describe('what scan touches', () => {
     await scan(deps, new Set());
     expect(saved).toHaveLength(1);
     expect(saved[0]).toEqual({ ...t, tag: [GROCERIES], viewed: true, changed: expect.any(Number) });
-    expect(saved[0]!.changed).toBeGreaterThan(t.changed);
+    expect(saved[0].changed).toBeGreaterThan(t.changed);
   });
 
   it("never overwrites the user's comment", async () => {
@@ -134,8 +135,8 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ outcome: 0, income: 2000, payee: 'Employer' })]);
     const requests = jev({ choice: 'Salary', confidence: 0.99 });
     await scan(deps, new Set());
-    expect(Object.keys(requests[0]!.criteria)).toEqual(['Salary']);
-    expect(requests[0]!.state).toMatchObject({ direction: 'money in', amount: 2000 });
+    expect(Object.keys(requests[0].criteria)).toEqual(['Salary']);
+    expect(requests[0].state).toMatchObject({ direction: 'money in', amount: 2000 });
   });
 
   it('money back from a payee you have paid is a refund: spending categories, flagged for Jev', async () => {
@@ -143,9 +144,9 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ outcome: 0, income: 3, payee: 'Shop', originalPayee: 'Shop' })], [paid]);
     const requests = jev({ choice: 'Food → Groceries', confidence: 0.9 });
     await scan(deps, new Set());
-    expect(Object.keys(requests[0]!.criteria)).toContain('Food → Groceries');
-    expect(Object.keys(requests[0]!.criteria)).not.toContain('Salary');
-    expect(requests[0]!.state.looks_like).toMatch(/refund/);
+    expect(Object.keys(requests[0].criteria)).toContain('Food → Groceries');
+    expect(Object.keys(requests[0].criteria)).not.toContain('Salary');
+    expect(requests[0].state.looks_like).toMatch(/refund/);
   });
 
   it('gives Jev the readable category names, the user hints and the payee history', async () => {
@@ -155,8 +156,8 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ payee: 'Cafe', originalPayee: 'Cafe' })], past);
     const requests = jev({ choice: 'Food → Out', confidence: 0.9 });
     await scan(deps, new Set());
-    expect(requests[0]!.criteria).toMatchObject({ 'Food → Out': 'eating out', '🎈': 'party supplies' });
-    expect(requests[0]!.state.how_i_filed_this_payee_before).toEqual([
+    expect(requests[0].criteria).toMatchObject({ 'Food → Out': 'eating out', '🎈': 'party supplies' });
+    expect(requests[0].state.how_i_filed_this_payee_before).toEqual([
       { category: 'Food → Out', times: 1, typical_amount: 4 },
     ]);
   });

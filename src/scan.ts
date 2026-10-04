@@ -15,8 +15,8 @@ const HABIT_MIN_TIMES = 3;
 const HABIT_SHARE = 0.9;
 
 export interface Deps {
-  zenmoney: ZenMoney;
-  telegram: Telegram;
+  zenmoney: Pick<ZenMoney, 'since' | 'save'>;
+  telegram: Pick<Telegram, 'send'>;
   chatId: string;
   jevToken: string;
   gmail: { user: string; appPassword: string } | null;
@@ -47,8 +47,8 @@ export function payeeKey(t: Parameters<typeof counterparty>[0]): string {
     .toLowerCase()
     .replace(/[*#]\s*[a-z0-9]{6,}$/, '')
     .replace(/\s\d{2}[a-z]{3}\s+[a-z0-9]+$/, '')
-    .replace(/\S*\d{5,}\S*/g, '')
-    .replace(/\s+/g, ' ')
+    .replaceAll(/\S*\d{5,}\S*/g, '')
+    .replaceAll(/\s+/g, ' ')
     .replace(/[\s,:;.-]+$/, '')
     .trim();
 }
@@ -153,7 +153,7 @@ export function displayPayee(raw: string): string {
     .replace(/\s\d{2}[a-z]{3}\s+[A-Za-z0-9]+$/i, '')
     .replace(/[*\s]+$/, '')
     .trim();
-  return (name || raw).replace(/\./g, '.\u2060');
+  return (name || raw).replaceAll('.', '.\u2060');
 }
 
 function shortDate(day: string): string {

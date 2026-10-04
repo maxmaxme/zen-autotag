@@ -4,7 +4,7 @@ import { GmailAuthError } from './gmail.ts';
 import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
 import { scan, type Deps } from './scan.ts';
-import { handleTap } from './taps.ts';
+import { handleTap, type TapDeps } from './taps.ts';
 import { Telegram } from './telegram.ts';
 import { ServerSchema, ZenMoney, ZenMoneyError } from './zenmoney.ts';
 
@@ -20,15 +20,12 @@ try {
 const log = (msg: string) => console.log(`${new Date().toISOString()} ${msg}`);
 
 function env(name: string, fallback?: string): string {
-  const value = process.env[name];
-  if (value) {
-    return value;
+  const value = process.env[name] || fallback;
+  if (value === undefined) {
+    console.error(`missing env var ${name}`);
+    process.exit(1);
   }
-  if (fallback !== undefined) {
-    return fallback;
-  }
-  console.error(`missing env var ${name}`);
-  process.exit(1);
+  return value;
 }
 
 /** config.json (on the Pi, never in git): the start date and optional category hints. */
@@ -62,7 +59,7 @@ const config = loadConfig(env('CONFIG_PATH', './data/config.json'));
 const telegram = new Telegram(env('ZEN_TELEGRAM_BOT_TOKEN'));
 const gmailUser = process.env.GMAIL_USER;
 const gmailPassword = process.env.GMAIL_APP_PASSWORD;
-const deps: Deps = {
+const deps: Deps & TapDeps = {
   zenmoney: new ZenMoney(env('ZENMONEY_TOKEN'), server.output),
   telegram,
   chatId: env('TELEGRAM_CHAT_ID'),

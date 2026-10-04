@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MERCHANTS, receiptFor } from '../src/receipts.ts';
 import { amazonOrderEmail, amazonRefundEmail, glovoOrderEmail, paypalReceiptEmail } from './fixtures.ts';
 
-const glovo = MERCHANTS[0]!;
+const glovo = MERCHANTS[0];
 
 describe('Glovo order receipt', () => {
   it('takes the grand total — not item prices, struck-through prices, fees or VAT lines', () => {

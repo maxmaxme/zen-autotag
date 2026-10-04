@@ -7,8 +7,8 @@ const DAY = 86_400_000;
 const TAP_WINDOW_DAYS = 30;
 
 export interface TapDeps {
-  zenmoney: ZenMoney;
-  telegram: Telegram;
+  zenmoney: Pick<ZenMoney, 'since' | 'save'>;
+  telegram: Pick<Telegram, 'edit' | 'answer'>;
   chatId: string;
   hints: Record<string, string>;
   dryRun: boolean;

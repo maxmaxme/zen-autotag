@@ -129,7 +129,7 @@ function markup(keyboard: Keyboard) {
 
 // callback_data is capped at 64 bytes, so UUIDs travel as 22-char base64url.
 export function packId(uuid: string): string {
-  return Buffer.from(uuid.replace(/-/g, ''), 'hex').toString('base64url');
+  return Buffer.from(uuid.replaceAll('-', ''), 'hex').toString('base64url');
 }
 
 export function unpackId(packed: string): string {

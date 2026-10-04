@@ -31,7 +31,7 @@ export async function findMail(
     port: 993,
     secure: true,
     // Google shows app passwords in groups of four; the spaces aren't part of it.
-    auth: { user: auth.user, pass: auth.appPassword.replace(/\s+/g, '') },
+    auth: { user: auth.user, pass: auth.appPassword.replaceAll(/\s+/g, '') },
     logger: false,
   });
   try {

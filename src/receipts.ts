@@ -32,12 +32,12 @@ export function localDay(d: Date, timeZone = 'Europe/Madrid'): string {
 
 /** "40,48", "7.99", "1.234,50", "1,234.50" → cents. */
 export function euroCents(raw: string): number | null {
-  const s = raw.replace(/[\s  €]|EUR/g, '');
+  const s = raw.replaceAll(/[\s  €]|EUR/g, '');
   const m = /^(\d{1,3}(?:[.,]\d{3})*|\d+)(?:[.,](\d{1,2}))?$/.exec(s);
   if (!m) {
     return null;
   }
-  return Number((m[1] ?? '0').replace(/[.,]/g, '')) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
+  return Number((m[1] ?? '0').replaceAll(/[.,]/g, '')) * 100 + Number((m[2] ?? '').padEnd(2, '0'));
 }
 
 const ENTITIES: Record<string, string> = {
@@ -72,14 +72,14 @@ const ACCENTS: Record<string, string> = {
 
 function text(html: string): string {
   return html
-    .replace(/<[^>]+>/g, ' ') // a tag separates words: "</p><p>" must not glue paragraphs
-    .replace(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(Number.parseInt(n, 16)))
-    .replace(/&([a-z])(acute|grave|tilde|uml|circ|cedil|ring);/gi, (_, l: string, mark: string) =>
+    .replaceAll(/<[^>]+>/g, ' ') // a tag separates words: "</p><p>" must not glue paragraphs
+    .replaceAll(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
+    .replaceAll(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(Number.parseInt(n, 16)))
+    .replaceAll(/&([a-z])(acute|grave|tilde|uml|circ|cedil|ring);/gi, (_, l: string, mark: string) =>
       `${l}${ACCENTS[mark.toLowerCase()]}`.normalize('NFC'),
     )
-    .replace(/&([a-z]+);/gi, (all, name: string) => ENTITIES[name] ?? ENTITIES[name.toLowerCase()] ?? all)
-    .replace(/\s+/g, ' ')
+    .replaceAll(/&([a-z]+);/gi, (all, name: string) => ENTITIES[name] ?? ENTITIES[name.toLowerCase()] ?? all)
+    .replaceAll(/\s+/g, ' ')
     .trim();
 }
 
@@ -109,7 +109,7 @@ export function parseGlovoPrime(email: Email): Receipt | null {
     return null;
   }
   // Subject: "GLOVOAPP23 SL: €7.99 EUR"
-  const amount = /:\s*(?:€|EUR)?\s*([\d.,]+)/.exec(email.subject.replace(/[  ]/g, ' '))?.[1];
+  const amount = /:\s*(?:€|EUR)?\s*([\d.,]+)/.exec(email.subject.replaceAll(/[  ]/g, ' '))?.[1];
   const totalCents = amount ? euroCents(amount) : null;
   if (totalCents === null) {
     return null;

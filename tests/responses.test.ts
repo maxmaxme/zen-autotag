@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { classify, JevError } from '../src/jev.ts';
 import { Telegram } from '../src/telegram.ts';
 import { ZenMoney, ZenMoneyError } from '../src/zenmoney.ts';
+import { requestBody } from './helpers.ts';
 
 // What comes back from the three APIs is checked, not trusted.
 
@@ -11,7 +12,7 @@ const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 function respond(...bodies: unknown[]) {
   const sent: Record<string, unknown>[] = [];
   vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
-    sent.push(JSON.parse(String(init.body)));
+    sent.push(JSON.parse(requestBody(init)));
     return new Response(JSON.stringify(bodies.shift()), { status: 200 });
   });
   return sent;

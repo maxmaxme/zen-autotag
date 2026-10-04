@@ -8,7 +8,7 @@ pre-commit:
       stage_fixed: true
     - name: lint
       glob: '*.{ts,mjs}'
-      run: npx oxlint --deny-warnings {staged_files}
+      run: npx oxlint --type-aware --deny-warnings {staged_files}
 
 pre-push:
   parallel: true
