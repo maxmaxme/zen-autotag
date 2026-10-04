@@ -43,20 +43,24 @@ forever:
   in between → Telegram long polling          # button taps; no public URL needed
 ```
 
-No database. ZenMoney's `viewed` flag marks what's done, Telegram messages
-carry their own state (ids packed into the buttons), and `config.json` holds
-the start date and your category hints:
+ZenMoney's `viewed` flag marks what's done and Telegram messages carry their
+own state (ids packed into the buttons). The service's own data is one small
+SQLite file (`DB_PATH`, built-in `node:sqlite`): the start date and your
+category hints.
 
-```json
-{ "startDate": "2026-10-04", "hints": { "<category as shown, e.g. Parent → Child>": "plain words: what goes there" } }
-```
+| Table   | Holds                                                                              |
+| ------- | ---------------------------------------------------------------------------------- |
+| `hints` | `category` as shown (e.g. `Parent → Child`) → `hint`: plain words, what goes there |
+| `kv`    | `start_date` — transactions before it are never touched                            |
 
+Hints are read on every scan, so an edit applies within `SCAN_MINUTES`.
 Categories with no hint are named in one Telegram message (once per run).
-Hints are read at start — restart after editing.
+A `config.json` from older versions is imported on start and renamed.
 
 | File              | Does                                                                         |
 | ----------------- | ---------------------------------------------------------------------------- |
-| `src/main.ts`     | env, config, the loop, error alerts to Telegram                              |
+| `src/main.ts`     | env, the loop, error alerts to Telegram                                      |
+| `src/store.ts`    | the SQLite: start date, hints, migrations, one-time config.json import       |
 | `src/scan.ts`     | one pass: new transactions → habit or Jev → save → messages                  |
 | `src/taps.ts`     | button presses: OK / pick / other / back                                     |
 | `src/receipts.ts` | merchants (Glovo, Amazon): Gmail queries, parsers, charge ↔ receipt matching |

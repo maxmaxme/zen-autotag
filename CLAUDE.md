@@ -44,11 +44,13 @@ the check fails if it is older than 10 minutes.
 
 **Keep it small and sequential.** One loop in `main.ts`: scan every
 SCAN_MINUTES, Telegram long polling in between. No timers, no HTTP server,
-no queue, no database. A tap and a scan never run at the same time. Resist
-adding state: ZenMoney's `viewed` flag is the "done" marker, Telegram
-messages carry their own state (UUIDs packed as 22-char base64url in
-`callback_data`, ≤64 bytes; the "Other" list keeps the original buttons
-above « Back), `config.json` holds only startDate + hints.
+no queue. A tap and a scan never run at the same time. Resist adding state:
+ZenMoney's `viewed` flag is the "done" marker, Telegram messages carry their
+own state (UUIDs packed as 22-char base64url in `callback_data`, ≤64 bytes;
+the "Other" list keeps the original buttons above « Back). The service's own
+data — start date and category hints, nothing about transactions — is a
+small SQLite (`src/store.ts`, `node:sqlite`, append-only migrations in
+PRAGMA user_version); hints are re-read every scan.
 
 **Functions stay under Sonar's cognitive complexity of 15** (`npm run lint`
 enforces it) — split into
@@ -67,7 +69,7 @@ and `changed`. Never touch: transfers (incomeAccount ≠ outcomeAccount),
 viewed transactions, anything before `startDate`, a non-empty comment.
 
 **Everything from outside is parsed with a valibot schema**, never cast
-with `as` — API responses, `config.json`, env choices. ZenMoney
+with `as` — API responses, database rows, env choices. ZenMoney
 transactions use `v.looseObject` so unknown fields survive the write-back;
 a Telegram update that doesn't parse is skipped (offset still advances).
 

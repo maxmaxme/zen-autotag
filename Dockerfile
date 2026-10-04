@@ -12,8 +12,10 @@ RUN npm ci --omit=dev --omit=optional --ignore-scripts
 COPY tsconfig.json ./
 COPY src ./src
 
-# config.json (start date + category hints) lives in the data volume.
+# The database (start date + category hints) lives in the data volume; an
+# old config.json there is imported into it once.
 ENV NODE_ENV=production \
+    DB_PATH=/app/data/zen-autotag.sqlite \
     CONFIG_PATH=/app/data/config.json \
     HEARTBEAT_FILE=/tmp/alive
 

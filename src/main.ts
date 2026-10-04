@@ -1,9 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import * as v from 'valibot';
 import { GmailAuthError } from './gmail.ts';
 import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
 import { scan, type Deps } from './scan.ts';
+import { importLegacyConfig, openStore } from './store.ts';
 import { handleTap, type TapDeps } from './taps.ts';
 import { Telegram, TelegramError } from './telegram.ts';
 import { ServerSchema, ZenMoney, ZenMoneyError } from './zenmoney.ts';
@@ -28,34 +29,23 @@ function env(name: string, fallback?: string): string {
   return value;
 }
 
-/** config.json (on the Pi, never in git): the start date and optional category hints. */
-const ConfigSchema = v.object({
-  startDate: v.optional(v.pipe(v.string(), v.isoDate())),
-  hints: v.optional(v.record(v.string(), v.string()), {}),
-});
-
-function loadConfig(path: string): { startDate: string; hints: Record<string, string> } {
-  const parsed = v.safeParse(ConfigSchema, existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});
-  if (!parsed.success) {
-    console.error(`${path}: ${v.summarize(parsed.issues)}`);
-    process.exit(1);
-  }
-  const config = parsed.output;
-  if (!config.startDate) {
-    // First start: only transactions from today on are ever touched.
-    config.startDate = localDay(new Date());
-    writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
-    log(`wrote ${path} with startDate ${config.startDate}`);
-  }
-  return { startDate: config.startDate, hints: config.hints };
-}
-
 const server = v.safeParse(ServerSchema, env('ZENMONEY_SERVER', 'ru'));
 if (!server.success) {
   console.error(`ZENMONEY_SERVER must be one of ${ServerSchema.options.join(', ')}`);
   process.exit(1);
 }
-const config = loadConfig(env('CONFIG_PATH', './data/config.json'));
+const store = openStore(env('DB_PATH', './data/zen-autotag.sqlite'));
+const legacyConfig = env('CONFIG_PATH', './data/config.json');
+if (importLegacyConfig(store, legacyConfig)) {
+  log(`imported ${legacyConfig} into the database (renamed to *.imported)`);
+}
+let startDate = store.startDate();
+if (!startDate) {
+  // First start: only transactions from today on are ever touched.
+  startDate = localDay(new Date());
+  store.setStartDate(startDate);
+  log(`first start: startDate ${startDate}`);
+}
 const telegram = new Telegram(env('ZEN_TELEGRAM_BOT_TOKEN'));
 const gmailUser = process.env.GMAIL_USER;
 const gmailPassword = process.env.GMAIL_APP_PASSWORD;
@@ -65,8 +55,8 @@ const deps: Deps & TapDeps = {
   chatId: env('TELEGRAM_CHAT_ID'),
   jevToken: env('TYPESAFE_TOKEN'),
   gmail: gmailUser && gmailPassword ? { user: gmailUser, appPassword: gmailPassword } : null,
-  startDate: config.startDate,
-  hints: config.hints,
+  startDate,
+  hints: store.hints(),
   minConfidence: Number(env('MIN_CONFIDENCE', '0.8')),
   applyConfidence: Number(env('APPLY_CONFIDENCE', '0.5')),
   dryRun: ['1', 'true', 'yes'].includes(env('DRY_RUN', '').toLowerCase()),
@@ -109,6 +99,7 @@ for (;;) {
   if (Date.now() - lastScan >= scanEveryMs) {
     lastScan = Date.now();
     try {
+      deps.hints = store.hints(); // an edit in the database applies on the next scan
       const n = await scan(deps, handled);
       if (n > 0) {
         log(`categorised ${n}`);

@@ -179,7 +179,7 @@ describe('categories without a hint', () => {
     delete deps.hints['Food → Groceries'];
     await scan(deps, new Set());
     await scan(deps, new Set());
-    expect(sent.map((m) => m.html)).toEqual(['No hint in config.json for: <b>Food → Groceries</b>, <b>Salary</b>']);
+    expect(sent.map((m) => m.html)).toEqual(['No hint yet for: <b>Food → Groceries</b>, <b>Salary</b>']);
   });
 });
 

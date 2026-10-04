@@ -411,14 +411,14 @@ async function decide(deps: Deps, ctx: Context, t: Transaction): Promise<Decisio
 /** Categories already reported as missing a hint — once per run is enough. */
 const reported = new Set<string>();
 
-/** One line in Telegram when a category has no hint in config.json, so you remember to add one. */
+/** One line in Telegram when a category has no hint in the database, so you remember to add one. */
 async function reportUnhinted(deps: Deps, tags: readonly Tag[]): Promise<void> {
   const options = [...categoryOptions(false, tags, deps.hints), ...categoryOptions(true, tags, deps.hints)];
   const fresh = [...new Set(options.filter((o) => !o.hint && !reported.has(o.name)).map((o) => o.name))];
   if (fresh.length > 0) {
     await deps.telegram.send(
       deps.chatId,
-      `No hint in config.json for: ${fresh.map((n) => `<b>${escapeHtml(n)}</b>`).join(', ')}`,
+      `No hint yet for: ${fresh.map((n) => `<b>${escapeHtml(n)}</b>`).join(', ')}`,
       null,
       false,
     );
