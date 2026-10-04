@@ -5,7 +5,7 @@ import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
 import { scan, type Deps } from './scan.ts';
 import { handleTap, type TapDeps } from './taps.ts';
-import { Telegram } from './telegram.ts';
+import { Telegram, TelegramError } from './telegram.ts';
 import { ServerSchema, ZenMoney, ZenMoneyError } from './zenmoney.ts';
 
 // One process, one loop, nothing in parallel:
@@ -123,7 +123,10 @@ for (;;) {
       await handleTap(deps, tap).catch(alert);
     }
   } catch (err) {
-    await alert(err);
-    await new Promise((r) => setTimeout(r, 10_000));
+    // Telegram itself failing (429, 5xx, a timed-out poll) has no channel to alert
+    // through and passes on its own: log it and wait as long as Telegram asks.
+    log(`telegram: ${err instanceof Error ? err.message : String(err)}`);
+    const retryAfter = err instanceof TelegramError ? err.retryAfter : null;
+    await new Promise((r) => setTimeout(r, (retryAfter ?? 10) * 1000));
   }
 }

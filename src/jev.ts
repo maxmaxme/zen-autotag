@@ -6,6 +6,8 @@ import { parseJson } from './json.ts';
 
 const URL = 'https://api.typesafe.ai/v1/systemone';
 const MAX_OPTIONS = 255;
+/** A hung request would stall the whole loop; a timeout just means "retry next pass". */
+const TIMEOUT_MS = 30_000;
 
 export interface Option {
   id: string;
@@ -59,6 +61,7 @@ export async function classify(token: string, state: unknown, options: readonly 
 
   const res = await fetch(URL, {
     method: 'POST',
+    signal: AbortSignal.timeout(TIMEOUT_MS),
     headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
     body: JSON.stringify({
       model: 'jev-latest',

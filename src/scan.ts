@@ -1,4 +1,4 @@
-import { findMail } from './gmail.ts';
+import { findMail, type Email } from './gmail.ts';
 import { classify, JevError, type Choice, type Option } from './jev.ts';
 import { MERCHANTS, receiptFor, type Merchant, type Receipt } from './receipts.ts';
 import { encode, escapeHtml, type Keyboard, type Telegram } from './telegram.ts';
@@ -115,6 +115,19 @@ function weekday(day: string): string {
 }
 
 /** Every receipt of the merchants involved, across all the charges' days, in one mailbox visit. */
+/** One odd email must not fail the pass: it's logged and skipped. */
+function parseSafely(deps: Deps, m: Merchant, email: Email): Receipt[] {
+  try {
+    const receipt = m.parse(email);
+    return receipt ? [receipt] : [];
+  } catch (err) {
+    deps.log(
+      `${m.name}: skipped an email that broke the parser (${email.subject.slice(0, 80)}): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
+}
+
 async function receiptsFor(deps: Deps, charges: readonly Transaction[]): Promise<Map<Merchant, Receipt[]>> {
   const out = new Map<Merchant, Receipt[]>();
   if (!deps.gmail) {
@@ -136,7 +149,7 @@ async function receiptsFor(deps: Deps, charges: readonly Transaction[]): Promise
       new Date(Date.parse(`${first}T00:00:00Z`) - m.maxDaysApart * DAY),
       new Date(Date.parse(`${last}T00:00:00Z`) + m.maxDaysApart * DAY),
     );
-    const parsed = emails.map((e) => m.parse(e)).filter((r): r is Receipt => r !== null);
+    const parsed = emails.flatMap((e) => parseSafely(deps, m, e));
     if (emails.length > 0 && parsed.length === 0) {
       deps.log(`${m.name}: ${emails.length} email(s) found but none parsed — has the template changed?`);
     }
@@ -432,12 +445,15 @@ export async function scan(deps: Deps, handled: Set<string>): Promise<number> {
     const d = await decide(deps, ctx, t);
     if (d) {
       decisions.push(d);
-      handled.add(t.id);
       deps.log(d.note);
     }
   }
   if (!deps.dryRun) {
     await deps.zenmoney.save(decisions.map((d) => d.update));
+  }
+  // Only once saved: if the write fails, the next pass tries these again.
+  for (const d of decisions) {
+    handled.add(d.update.id);
   }
   for (const d of decisions) {
     if (d.message) {

@@ -4,15 +4,25 @@ import type { Email } from '../src/gmail.ts';
 // tables, promo badges, struck-through prices, fee rows, VAT lines, delivery
 // block) with made-up content — never real receipts in this public repo.
 
-function product(qty: number, name: string, price: string, extra = ''): string {
+function product(qty: number, name: string, price: string, extra = '', unavailable = false): string {
+  // An item the shop didn't have: name struck through, then a notice row.
+  const nameCell = unavailable
+    ? `<td class="strikethrough">
+                  ${name}
+                </td>
+              </tr>
+              <tr class="product__notice">
+                <td><img class="light-mode" src="https://example.invalid/icon_product_removed-light.png" alt="notice_icon" width="14" height="14"></td>
+                <td> Not available — you weren’t charged </td>`
+    : `<td>
+                  ${name}
+                </td>`;
   return `<tr style="vertical-align: top">
           <td><strong>${qty}x</strong></td>
           <td class="product">
             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
               <tr>
-                  <td>
-                  ${name}
-                </td>
+                  ${nameCell}
               </tr>
 ${extra}
             </table>
@@ -33,7 +43,15 @@ export function glovoOrderEmail(opts: {
   store: string;
   date: Date;
   total: string;
-  products: { qty: number; name: string; price: string; options?: string; promo?: string; was?: string }[];
+  products: {
+    qty: number;
+    name: string;
+    price: string;
+    options?: string;
+    promo?: string;
+    was?: string;
+    unavailable?: boolean;
+  }[];
 }): Email {
   const rows = opts.products
     .map((p) =>
@@ -48,6 +66,7 @@ export function glovoOrderEmail(opts: {
             ? `<tr><td align="right" class="product__original-price" style="white-space: nowrap">${p.was} €</td></tr>`
             : '',
         ].join('\n'),
+        p.unavailable,
       ),
     )
     .join('\n');

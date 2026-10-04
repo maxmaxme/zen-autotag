@@ -72,7 +72,7 @@ const ACCENTS: Record<string, string> = {
 
 function text(html: string): string {
   return html
-    .replaceAll(/<[^>]+>/g, ' ') // a tag separates words: "</p><p>" must not glue paragraphs
+    .replaceAll(/<[^<>]*>/g, ' ') // a tag separates words: "</p><p>" must not glue paragraphs
     .replaceAll(/&#(\d+);/g, (_, n: string) => String.fromCodePoint(Number(n)))
     .replaceAll(/&#x([0-9a-f]+);/gi, (_, n: string) => String.fromCodePoint(Number.parseInt(n, 16)))
     .replaceAll(/&([a-z])(acute|grave|tilde|uml|circ|cedil|ring);/gi, (_, l: string, mark: string) =>
@@ -83,20 +83,30 @@ function text(html: string): string {
     .trim();
 }
 
+// Every pattern below is bounded ({0,n}, not * or +) where it could backtrack:
+// anyone can email a look-alike receipt, and a crafted one must not hang a scan.
+
 /** Glovo "Details of your order" — sent after delivery, so the total is final. */
 function parseGlovoOrder(email: Email): Receipt | null {
   if (!/@glovoapp\.com/i.test(email.from) || !/details of your order/i.test(email.subject)) {
     return null;
   }
-  const store = /receipt from\s*<strong>([\s\S]*?)<\/strong>/i.exec(email.html)?.[1];
+  const store = /receipt from\s{0,20}<strong>([^<]{1,200})<\/strong>/i.exec(email.html)?.[1];
   // The bold grand total: `<td>Total</td><td>40,48 €</td>` ("Total taxable base" doesn't match `>Total<`).
-  const total = />\s*Total\s*<\/td>\s*<td[^>]*>\s*([\d.,\s ]+)\s*(?:€|&euro;)/i.exec(email.html)?.[1];
+  const total =
+    />\s{0,20}Total\s{0,20}<\/td>\s{0,20}<td[^<>]{0,200}>\s{0,20}([\d.,\s]{1,20}?)\s{0,20}(?:€|&euro;)/i.exec(
+      email.html,
+    )?.[1];
   const totalCents = total ? euroCents(total) : null;
   if (!store || totalCents === null) {
     return null;
   }
   const items = [
-    ...email.html.matchAll(/<strong>(\d+)x<\/strong><\/td>\s*<td class="product">[\s\S]*?<td>([\s\S]*?)<\/td>/g),
+    // The name is the product cell's first plain <td>; an item that wasn't available
+    // has it as <td class="strikethrough"> instead — not charged, so not matched.
+    ...email.html.matchAll(
+      /<strong>(\d{1,4})x<\/strong><\/td>\s{0,50}<td class="product">\s{0,50}<table[^<>]{0,300}>\s{0,50}<tr>\s{0,50}<td>([^<]{1,500})<\/td>/g,
+    ),
   ]
     .map((m) => `${m[1]}x ${text(m[2] ?? '')}`)
     .filter((s) => s.length > 3);
@@ -127,14 +137,17 @@ function parseAmazonOrder(email: Email): Receipt | null {
   if (!/@amazon\./i.test(email.from) || !/^(ordered|dispatched|shipped)\b/i.test(email.subject)) {
     return null;
   }
-  const total = />\s*Total\s*<\/td>\s*<td[^>]*>(?:<[^>]+>|\s)*€\s*([\d.,]+)/i.exec(email.html)?.[1];
+  const total =
+    />\s{0,20}Total\s{0,20}<\/td>\s{0,20}<td[^<>]{0,200}>(?:<[^<>]{0,200}>|\s){0,20}€\s{0,5}([\d.,]{1,20})/i.exec(
+      email.html,
+    )?.[1];
   const totalCents = total ? euroCents(total) : null;
   if (totalCents === null) {
     return null;
   }
-  const items = [...email.html.matchAll(/<a [^>]*>([^<]{3,})<\/a>(?:(?!<a )[\s\S]){0,4000}?Quantity:\s*(\d+)/g)].map(
-    (m) => `${m[2]}x ${text(m[1] ?? '')}`,
-  );
+  const items = [
+    ...email.html.matchAll(/<a [^<>]{0,1000}>([^<]{3,300})<\/a>(?:(?!<a )[\s\S]){0,4000}?Quantity:\s{0,20}(\d{1,4})/g),
+  ].map((m) => `${m[2]}x ${text(m[1] ?? '')}`);
   return { store: 'Amazon', items, totalCents, day: localDay(email.date) };
 }
 
@@ -144,10 +157,10 @@ function parseAmazonRefund(email: Email): Receipt | null {
     return null;
   }
   const body = text(email.html);
-  const items = [...body.matchAll(/Item:\s*(.+?)(?=\s+(?:Item:|Your refund|Quantity))/g)].map(
+  const items = [...body.matchAll(/Item:\s{0,20}(.{1,300}?)(?=\s+(?:Item:|Your refund|Quantity))/g)].map(
     (m) => `1x ${m[1]?.trim()}`,
   );
-  const amount = /credited as follows:.*?:\s*([\d.,]+)\s*€/i.exec(body)?.[1];
+  const amount = /credited as follows:.{0,300}?:\s{0,20}([\d.,]{1,20})\s{0,5}€/i.exec(body)?.[1];
   const totalCents = amount ? euroCents(amount) : null;
   return totalCents === null ? null : { store: 'Amazon (refund)', items, totalCents, day: localDay(email.date) };
 }

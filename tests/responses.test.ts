@@ -82,6 +82,16 @@ describe('Jev', () => {
 });
 
 describe('Telegram', () => {
+  it('passes on how long Telegram asks to wait when rate-limited', async () => {
+    respond({
+      ok: false,
+      error_code: 429,
+      description: 'Too Many Requests: retry after 5',
+      parameters: { retry_after: 5 },
+    });
+    await expect(new Telegram('t').taps(1)).rejects.toMatchObject({ name: 'TelegramError', retryAfter: 5 });
+  });
+
   it('skips an update it cannot read and moves past it, so polling never gets stuck', async () => {
     const message = { message_id: 7, chat: { id: 42 }, text: 'hi' };
     const sent = respond(

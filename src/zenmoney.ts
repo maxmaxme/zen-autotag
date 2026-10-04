@@ -113,6 +113,8 @@ export class ZenMoney {
   private async diff(body: Record<string, unknown>): Promise<Diff> {
     const res = await fetch(this.url, {
       method: 'POST',
+      // Generous: `since(0)` downloads the whole account. A hung request would stall the loop.
+      signal: AbortSignal.timeout(120_000),
       headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ ...body, currentClientTimestamp: Math.floor(Date.now() / 1000) }),
     });

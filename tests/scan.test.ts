@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type * as Gmail from '../src/gmail.ts';
 import { habit, payeeHistory, payeeKey, scan, type Deps } from '../src/scan.ts';
 import type { Keyboard } from '../src/telegram.ts';
 import type { Snapshot, Tag, Transaction } from '../src/zenmoney.ts';
+import { glovoOrderEmail } from './fixtures.ts';
 import { requestBody } from './helpers.ts';
 
 // Neutral, made-up data only (public repo).
@@ -57,6 +59,13 @@ function jev(...replies: JevReply[]) {
   });
   return requests;
 }
+
+// The mailbox, for the receipt tests; other tests run without Gmail.
+const mailbox = vi.hoisted(() => ({ emails: [] as Gmail.Email[] }));
+vi.mock('../src/gmail.ts', async (actual) => ({
+  ...(await actual<typeof Gmail>()),
+  findMail: async () => mailbox.emails,
+}));
 
 function setup(recent: Transaction[], history: Transaction[] = []) {
   const snapshot = (transactions: Transaction[]): Snapshot => ({
@@ -292,5 +301,35 @@ describe('failures', () => {
     await scan(deps, handled);
     expect(saved).toEqual([]);
     expect(requests).toHaveLength(1);
+  });
+});
+
+describe('failures that must not lose or block work', () => {
+  it('an email that breaks the parser is skipped; the rest of the mail still counts', async () => {
+    const charge = tx({ payee: 'Glovo 10sep Abc123de', originalPayee: 'Glovo 10sep Abc123de', outcome: 5 });
+    const { deps } = setup([charge]);
+    deps.gmail = { user: 'u', appPassword: 'p' };
+    const good = glovoOrderEmail({
+      store: 'Shop',
+      date: new Date('2026-10-01T12:00:00Z'),
+      total: '5,00',
+      products: [],
+    });
+    mailbox.emails = [{ ...good, html: good.html.replace('Shop', 'Shop &#99999999;') }, good];
+    const requests = jev({ choice: 'Food', confidence: 0.9 });
+    expect(await scan(deps, new Set())).toBe(1);
+    expect(requests[0]!.state.receipt).toMatchObject({ store: 'Shop' });
+    mailbox.emails = [];
+  });
+
+  it('a failed write leaves the transactions to the next pass', async () => {
+    const { deps } = setup([tx()]);
+    deps.zenmoney.save = async () => {
+      throw new Error('ZenMoney 502');
+    };
+    jev({ choice: 'Food', confidence: 0.9 });
+    const handled = new Set<string>();
+    await expect(scan(deps, handled)).rejects.toThrow('502');
+    expect(handled.size).toBe(0);
   });
 });

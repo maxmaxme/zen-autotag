@@ -24,7 +24,18 @@ const ResponseSchema = v.object({
   ok: v.boolean(),
   result: v.optional(v.unknown()),
   description: v.optional(v.string()),
+  parameters: v.optional(v.object({ retry_after: v.optional(v.number()) })),
 });
+
+export class TelegramError extends Error {
+  /** Seconds Telegram asks us to wait (429), if it said. */
+  readonly retryAfter: number | null;
+  constructor(message: string, retryAfter: number | null) {
+    super(message);
+    this.name = 'TelegramError';
+    this.retryAfter = retryAfter;
+  }
+}
 
 const KeyboardSchema = v.array(v.array(v.object({ text: v.string(), callback_data: v.optional(v.string(), '') })));
 
@@ -117,7 +128,11 @@ export class Telegram {
     });
     const parsed = v.safeParse(ResponseSchema, parseJson(await res.text()));
     if (!parsed.success || !parsed.output.ok) {
-      throw new Error(`Telegram ${method}: ${(parsed.success && parsed.output.description) || res.status}`);
+      const out = parsed.success ? parsed.output : null;
+      throw new TelegramError(
+        `Telegram ${method}: ${out?.description ?? res.status}`,
+        out?.parameters?.retry_after ?? null,
+      );
     }
     return parsed.output.result;
   }

@@ -37,6 +37,22 @@ describe('Glovo order receipt', () => {
     expect(r?.items).toEqual(['1x Burger "Big"', '2x Nuggets', '1x Eggs 12u']);
   });
 
+  it('leaves out items the shop did not have — they were not charged', () => {
+    const r = glovo.parse(
+      glovoOrderEmail({
+        store: 'Shop',
+        date: new Date('2026-09-10T16:51:04Z'),
+        total: '5,00',
+        products: [
+          { qty: 1, name: 'Bread', price: '2,00' },
+          { qty: 1, name: 'Crisps', price: '1,50', unavailable: true },
+          { qty: 2, name: 'Milk', price: '3,00' },
+        ],
+      }),
+    );
+    expect(r?.items).toEqual(['1x Bread', '2x Milk']);
+  });
+
   it('dates the receipt by the Madrid day, which is what the card charge carries', () => {
     const late = glovo.parse(
       glovoOrderEmail({ store: 'S', date: new Date('2026-07-01T22:30:00Z'), total: '10,00', products: [] }),
@@ -102,6 +118,31 @@ describe('receiptFor', () => {
     expect(
       receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-01'), r('B', 798, '2026-10-03')]),
     ).toBeNull();
+  });
+});
+
+describe('a crafted look-alike email', () => {
+  // Anyone can send one; parsing it must stay fast (these took minutes with unbounded patterns).
+  const forged = (from: string, subject: string, html: string) => ({ from, subject, date: new Date(), html });
+  const fast = (parse: () => unknown) => {
+    const start = performance.now();
+    parse();
+    return performance.now() - start;
+  };
+
+  it('parses in well under a second however it is padded', () => {
+    const amazon = MERCHANTS.find((m) => m.name === 'Amazon')!;
+    const spaces = ' '.repeat(100_000);
+    const glovoTotal = forged('no-reply@glovoapp.com', 'Details of your order', `>Total</td><td>${spaces}x`);
+    const tags = forged('payments-messages@amazon.es', 'Refund on order 1', '<'.repeat(1_000_000));
+    const refund = forged('payments-messages@amazon.es', 'Refund on order 1', `Item: ${'a '.repeat(100_000)}`);
+    for (const [merchant, email] of [
+      [glovo, glovoTotal],
+      [amazon, tags],
+      [amazon, refund],
+    ] as const) {
+      expect(fast(() => merchant.parse(email))).toBeLessThan(1000);
+    }
   });
 });
 
