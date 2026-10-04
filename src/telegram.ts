@@ -1,6 +1,9 @@
 // Just the slice of the Telegram Bot API this service uses.
 // Updates come by long polling, so the Pi needs no public URL.
 
+import * as v from 'valibot';
+import { parseJson } from './json.ts';
+
 export interface Button {
   text: string;
   data: string;
@@ -16,6 +19,24 @@ export interface Tap {
   keyboard: Keyboard;
   data: string;
 }
+
+const ResponseSchema = v.object({ ok: v.boolean(), result: v.optional(v.unknown()), description: v.optional(v.string()) });
+
+const KeyboardSchema = v.array(v.array(v.object({ text: v.string(), callback_data: v.optional(v.string(), '') })));
+
+/** A button press on one of our messages; anything else in an update is ignored. */
+const CallbackSchema = v.object({
+  id: v.string(),
+  data: v.string(),
+  message: v.object({
+    message_id: v.number(),
+    chat: v.object({ id: v.number() }),
+    text: v.optional(v.string(), ''),
+    reply_markup: v.optional(v.object({ inline_keyboard: v.optional(KeyboardSchema, []) }), {}),
+  }),
+});
+
+const UpdatesSchema = v.array(v.object({ update_id: v.number(), callback_query: v.optional(v.unknown()) }));
 
 export class Telegram {
   private readonly base: string;
@@ -51,40 +72,26 @@ export class Telegram {
     await this.call('answerCallbackQuery', { callback_query_id: tap.id, ...(text ? { text } : {}) });
   }
 
-  /** Waits up to `timeoutSec` for button taps; everything else is dropped. */
+  /** Waits up to `timeoutSec` for button taps; everything else (and anything malformed) is dropped. */
   async taps(timeoutSec: number): Promise<Tap[]> {
-    const updates = (await this.call(
-      'getUpdates',
-      { offset: this.offset, timeout: timeoutSec, allowed_updates: ['callback_query'] },
-      (timeoutSec + 10) * 1000,
-    )) as {
-      update_id: number;
-      callback_query?: {
-        id: string;
-        data?: string;
-        message?: {
-          message_id: number;
-          chat: { id: number };
-          text?: string;
-          reply_markup?: { inline_keyboard?: { text: string; callback_data?: string }[][] };
-        };
-      };
-    }[];
+    const updates = v.parse(
+      UpdatesSchema,
+      await this.call('getUpdates', { offset: this.offset, timeout: timeoutSec, allowed_updates: ['callback_query'] }, (timeoutSec + 10) * 1000),
+    );
     const taps: Tap[] = [];
     for (const u of updates) {
+      // Moving the offset first: an update we can't read is dropped, not retried forever.
       this.offset = u.update_id + 1;
-      const q = u.callback_query;
-      if (q?.data && q.message) {
-        const keyboard = (q.message.reply_markup?.inline_keyboard ?? []).map((row) =>
-          row.map((b) => ({ text: b.text, data: b.callback_data ?? '' })),
-        );
+      const q = v.safeParse(CallbackSchema, u.callback_query);
+      if (q.success) {
+        const { id, data, message } = q.output;
         taps.push({
-          id: q.id,
-          chatId: q.message.chat.id,
-          messageId: q.message.message_id,
-          text: q.message.text ?? '',
-          keyboard,
-          data: q.data,
+          id,
+          chatId: message.chat.id,
+          messageId: message.message_id,
+          text: message.text,
+          keyboard: message.reply_markup.inline_keyboard.map((row) => row.map((b) => ({ text: b.text, data: b.callback_data }))),
+          data,
         });
       }
     }
@@ -98,11 +105,11 @@ export class Telegram {
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
-    const json = (await res.json()) as { ok: boolean; result?: unknown; description?: string };
-    if (!json.ok) {
-      throw new Error(`Telegram ${method}: ${json.description ?? res.status}`);
+    const parsed = v.safeParse(ResponseSchema, parseJson(await res.text()));
+    if (!parsed.success || !parsed.output.ok) {
+      throw new Error(`Telegram ${method}: ${(parsed.success && parsed.output.description) || res.status}`);
     }
-    return json.result;
+    return parsed.output.result;
   }
 }
 

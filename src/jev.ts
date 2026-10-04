@@ -1,6 +1,9 @@
 // TypeSafe Jev — a decision model: a Choice question returns one of the given
 // options with a probability for each and a calibrated confidence.
 // https://docs.typesafe.ai/api
+import * as v from 'valibot';
+import { parseJson } from './json.ts';
+
 const URL = 'https://api.typesafe.ai/v1/systemone';
 const MAX_OPTIONS = 255;
 
@@ -18,6 +21,16 @@ export interface Choice {
   /** All options, most likely first. */
   ranked: { id: string; probability: number }[];
 }
+
+const AnswerSchema = v.object({
+  answers: v.object({
+    category: v.object({
+      choice: v.string(),
+      confidence: v.number(),
+      probabilities: v.optional(v.record(v.string(), v.number()), {}),
+    }),
+  }),
+});
 
 export class JevError extends Error {
   readonly status: number;
@@ -63,16 +76,13 @@ export async function classify(token: string, state: unknown, options: readonly 
   if (!res.ok) {
     throw new JevError(res.status, `TypeSafe ${res.status}: ${body.slice(0, 200)}`);
   }
-  const answer = (
-    JSON.parse(body) as {
-      answers?: { category?: { choice?: string; confidence?: number; probabilities?: Record<string, number> } };
-    }
-  ).answers?.category;
-  const id = answer?.choice ? keyToId.get(answer.choice) : undefined;
-  if (!id || typeof answer?.confidence !== 'number') {
+  const parsed = v.safeParse(AnswerSchema, parseJson(body));
+  const answer = parsed.success ? parsed.output.answers.category : null;
+  const id = answer ? keyToId.get(answer.choice) : undefined;
+  if (!answer || !id) {
     throw new JevError(res.status, `TypeSafe: unexpected answer ${body.slice(0, 200)}`);
   }
-  const ranked = Object.entries(answer.probabilities ?? {})
+  const ranked = Object.entries(answer.probabilities)
     .map(([key, probability]) => ({ id: keyToId.get(key) ?? '', probability }))
     .filter((r) => r.id)
     .sort((a, b) => b.probability - a.probability);

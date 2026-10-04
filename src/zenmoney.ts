@@ -2,47 +2,66 @@
 // Reference: https://github.com/zenmoney/ZenPlugins/wiki/ZenMoney-API
 // Timestamps are Unix seconds; amounts are plain decimals, always >= 0.
 
-export const SERVERS = { ru: 'https://api.zenmoney.ru', app: 'https://api.zenmoney.app' } as const;
-export type Server = keyof typeof SERVERS;
+import * as v from 'valibot';
+import { parseJson } from './json.ts';
 
-export interface Tag {
-  id: string;
-  title: string;
-  parent: string | null;
-  showIncome?: boolean;
-  showOutcome?: boolean;
-}
+export const ServerSchema = v.picklist(['ru', 'app']);
+export type Server = v.InferOutput<typeof ServerSchema>;
+const SERVERS: Record<Server, string> = { ru: 'https://api.zenmoney.ru', app: 'https://api.zenmoney.app' };
 
-export interface Account {
-  id: string;
-  title: string;
-  instrument: number | null;
-}
+const nullableString = v.nullish(v.string(), null);
 
-export interface Instrument {
-  id: number;
-  shortTitle: string;
-  symbol: string;
-}
+const TagSchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  parent: nullableString,
+  showIncome: v.optional(v.boolean()),
+  showOutcome: v.optional(v.boolean()),
+});
+export type Tag = v.InferOutput<typeof TagSchema>;
 
-/** Written back whole (ZenMoney replaces the object), so every field we got is kept. */
-export interface Transaction {
-  id: string;
-  changed: number;
-  created: number;
-  deleted: boolean;
-  viewed: boolean;
-  date: string;
-  income: number;
-  outcome: number;
-  incomeAccount: string;
-  outcomeAccount: string;
-  tag: string[] | null;
-  payee: string | null;
-  originalPayee: string | null;
-  comment: string | null;
-  [field: string]: unknown;
-}
+const AccountSchema = v.object({
+  id: v.string(),
+  title: v.string(),
+  instrument: v.nullish(v.number(), null),
+});
+export type Account = v.InferOutput<typeof AccountSchema>;
+
+const InstrumentSchema = v.object({
+  id: v.number(),
+  shortTitle: v.string(),
+  symbol: v.string(),
+});
+export type Instrument = v.InferOutput<typeof InstrumentSchema>;
+
+/** Written back whole (ZenMoney replaces the object), so unknown fields are kept, not stripped. */
+const TransactionSchema = v.looseObject({
+  id: v.string(),
+  changed: v.number(),
+  created: v.number(),
+  deleted: v.boolean(),
+  viewed: v.boolean(),
+  date: v.string(),
+  income: v.number(),
+  outcome: v.number(),
+  incomeAccount: v.string(),
+  outcomeAccount: v.string(),
+  tag: v.nullish(v.array(v.string()), null),
+  payee: nullableString,
+  originalPayee: nullableString,
+  comment: nullableString,
+});
+export type Transaction = v.InferOutput<typeof TransactionSchema>;
+
+// Errors come back as { error: { code, message } } (or a plain string), sometimes with HTTP 200.
+const DiffSchema = v.object({
+  error: v.optional(v.union([v.string(), v.object({ code: v.optional(v.string()), message: v.optional(v.string()) })])),
+  transaction: v.optional(v.array(TransactionSchema), []),
+  tag: v.optional(v.array(TagSchema), []),
+  account: v.optional(v.array(AccountSchema), []),
+  instrument: v.optional(v.array(InstrumentSchema), []),
+});
+type Diff = v.InferOutput<typeof DiffSchema>;
 
 export interface Snapshot {
   transactions: Transaction[];
@@ -77,10 +96,10 @@ export class ZenMoney {
   async since(sinceSec: number): Promise<Snapshot> {
     const res = await this.diff({ serverTimestamp: sinceSec, forceFetch: ['tag', 'account', 'instrument'] });
     return {
-      transactions: ((res.transaction as Transaction[] | undefined) ?? []).filter((t) => !t.deleted),
-      tags: (res.tag as Tag[] | undefined) ?? [],
-      accounts: (res.account as Account[] | undefined) ?? [],
-      instruments: (res.instrument as Instrument[] | undefined) ?? [],
+      transactions: res.transaction.filter((t) => !t.deleted),
+      tags: res.tag,
+      accounts: res.account,
+      instruments: res.instrument,
     };
   }
 
@@ -91,28 +110,26 @@ export class ZenMoney {
     }
   }
 
-  private async diff(body: Record<string, unknown>): Promise<Record<string, unknown>> {
+  private async diff(body: Record<string, unknown>): Promise<Diff> {
     const res = await fetch(this.url, {
       method: 'POST',
       headers: { authorization: `Bearer ${this.token}`, 'content-type': 'application/json' },
       body: JSON.stringify({ ...body, currentClientTimestamp: Math.floor(Date.now() / 1000) }),
     });
     const text = await res.text();
-    let json: Record<string, unknown> = {};
-    try {
-      json = JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      // handled below
-    }
-    // Errors come back as { error: { code, message } }, sometimes with HTTP 200.
-    const err = json.error as { code?: string; message?: string } | string | undefined;
+    const parsed = v.safeParse(DiffSchema, parseJson(text));
+    const err = parsed.success ? parsed.output.error : undefined;
     if (!res.ok || err) {
       const msg = typeof err === 'object' ? `${err.code ?? ''} ${err.message ?? ''}`.trim() : (err ?? text.slice(0, 200));
       throw new ZenMoneyError(res.status, `ZenMoney ${res.status}: ${msg}`);
     }
-    return json;
+    if (!parsed.success) {
+      throw new ZenMoneyError(res.status, `ZenMoney: unexpected response — ${v.summarize(parsed.issues)}`);
+    }
+    return parsed.output;
   }
 }
+
 
 /** "Parent → Child", the way the user sees categories (stray spaces in titles dropped). */
 export function tagLabel(tag: Tag, tags: readonly Tag[]): string {

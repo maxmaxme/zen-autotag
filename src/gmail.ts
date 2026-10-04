@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
+import * as v from 'valibot';
 
 export interface Email {
   from: string;
@@ -36,7 +37,7 @@ export async function findMail(
   try {
     await client.connect();
   } catch (err) {
-    if ((err as { authenticationFailed?: boolean }).authenticationFailed) {
+    if (v.is(v.object({ authenticationFailed: v.literal(true) }), err)) {
       throw new GmailAuthError('Gmail rejected the login — check GMAIL_USER / GMAIL_APP_PASSWORD');
     }
     throw err;

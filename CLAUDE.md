@@ -47,6 +47,11 @@ transaction just fetched, change only `tag`, `viewed`, an empty `comment`
 and `changed`. Never touch: transfers (incomeAccount ≠ outcomeAccount),
 viewed transactions, anything before `startDate`, a non-empty comment.
 
+**Everything from outside is parsed with a valibot schema**, never cast
+with `as` — API responses, `config.json`, env choices. ZenMoney
+transactions use `v.looseObject` so unknown fields survive the write-back;
+a Telegram update that doesn't parse is skipped (offset still advances).
+
 **Never guess on failure.** A Jev 5xx skips that transaction (retried next
 pass, nothing marked); 401/403 fails the pass (Telegram alert). An email
 that doesn't parse is logged; the charge falls back to history-only.

@@ -198,9 +198,12 @@ const MAX_SUGGESTIONS = 4;
 /** Other likely categories than the current one, most likely first. */
 export function suggestions(pick: Choice, currentId: string | null, labels: Map<string, string>) {
   return pick.ranked
-    .filter((r) => r.id !== currentId && r.probability >= MIN_SUGGESTION && labels.has(r.id))
-    .slice(0, MAX_SUGGESTIONS)
-    .map((r) => ({ id: r.id, label: labels.get(r.id) as string, probability: r.probability }));
+    .filter((r) => r.id !== currentId && r.probability >= MIN_SUGGESTION)
+    .flatMap((r) => {
+      const label = labels.get(r.id);
+      return label ? [{ id: r.id, label, probability: r.probability }] : [];
+    })
+    .slice(0, MAX_SUGGESTIONS);
 }
 
 /** ✓ OK keeps what's there; one button per alternative (full "Parent → Child" names fit); then the full list. */
@@ -282,7 +285,7 @@ async function choose(
     if (err instanceof JevError && (err.status === 401 || err.status === 403)) {
       throw err;
     }
-    deps.log(`classify failed for ${String(state.payee)}, retrying next pass: ${(err as Error).message}`);
+    deps.log(`classify failed for ${String(state.payee)}, retrying next pass: ${err instanceof Error ? err.message : String(err)}`);
     return null;
   }
 }

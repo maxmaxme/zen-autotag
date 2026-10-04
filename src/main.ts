@@ -1,11 +1,12 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import * as v from 'valibot';
 import { GmailAuthError } from './gmail.ts';
 import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
 import { scan, type Deps } from './scan.ts';
 import { handleTap } from './taps.ts';
 import { Telegram } from './telegram.ts';
-import { SERVERS, ZenMoney, ZenMoneyError, type Server } from './zenmoney.ts';
+import { ServerSchema, ZenMoney, ZenMoneyError } from './zenmoney.ts';
 
 // One process, one loop, nothing in parallel:
 //   every SCAN_MINUTES → scan(); in between → wait for button taps (long polling).
@@ -31,22 +32,30 @@ function env(name: string, fallback?: string): string {
 }
 
 /** config.json (on the Pi, never in git): the start date and optional category hints. */
+const ConfigSchema = v.object({
+  startDate: v.optional(v.pipe(v.string(), v.isoDate())),
+  hints: v.optional(v.record(v.string(), v.string()), {}),
+});
+
 function loadConfig(path: string): { startDate: string; hints: Record<string, string> } {
-  const config = existsSync(path)
-    ? (JSON.parse(readFileSync(path, 'utf8')) as { startDate?: string; hints?: Record<string, string> })
-    : {};
+  const parsed = v.safeParse(ConfigSchema, existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {});
+  if (!parsed.success) {
+    console.error(`${path}: ${v.summarize(parsed.issues)}`);
+    process.exit(1);
+  }
+  const config = parsed.output;
   if (!config.startDate) {
     // First start: only transactions from today on are ever touched.
     config.startDate = localDay(new Date());
-    writeFileSync(path, `${JSON.stringify({ hints: {}, ...config }, null, 2)}\n`);
+    writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`);
     log(`wrote ${path} with startDate ${config.startDate}`);
   }
-  return { startDate: config.startDate, hints: config.hints ?? {} };
+  return { startDate: config.startDate, hints: config.hints };
 }
 
-const server = env('ZENMONEY_SERVER', 'ru');
-if (!(server in SERVERS)) {
-  console.error(`ZENMONEY_SERVER must be one of ${Object.keys(SERVERS).join(', ')}`);
+const server = v.safeParse(ServerSchema, env('ZENMONEY_SERVER', 'ru'));
+if (!server.success) {
+  console.error(`ZENMONEY_SERVER must be one of ${ServerSchema.options.join(', ')}`);
   process.exit(1);
 }
 const config = loadConfig(env('CONFIG_PATH', './data/config.json'));
@@ -54,7 +63,7 @@ const telegram = new Telegram(env('ZEN_TELEGRAM_BOT_TOKEN'));
 const gmailUser = process.env.GMAIL_USER;
 const gmailPassword = process.env.GMAIL_APP_PASSWORD;
 const deps: Deps = {
-  zenmoney: new ZenMoney(env('ZENMONEY_TOKEN'), server as Server),
+  zenmoney: new ZenMoney(env('ZENMONEY_TOKEN'), server.output),
   telegram,
   chatId: env('TELEGRAM_CHAT_ID'),
   jevToken: env('TYPESAFE_TOKEN'),
