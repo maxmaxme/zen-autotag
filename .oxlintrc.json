@@ -22,7 +22,9 @@
     "eslint/require-await": "error",
     "unicorn/prefer-string-replace-all": "error",
     // One loop, nothing in parallel (see CLAUDE.md): awaiting in a loop is the design.
-    "eslint/no-await-in-loop": "off"
+    "eslint/no-await-in-loop": "off",
+    // Spreading small, fresh objects in map() is clearer than mutating; the arrays here are tiny.
+    "oxc/no-map-spread": "off"
   },
   "overrides": [
     {
