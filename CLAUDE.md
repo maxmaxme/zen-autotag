@@ -30,6 +30,16 @@ full check. The complexity rule is loaded on its own from
 `tools/oxlint-complexity.mjs` — the whole eslint-plugin-sonarjs needs the
 TypeScript JS API, which TypeScript 7 doesn't have.
 
+Dependencies: Renovate (`renovate.json`) opens update PRs; dev-only
+patch/minor ones automerge once CI passes. Node and `@types/node` stay on
+24.x (the runtime). CI runs tests with coverage and fails below the floor in
+`vitest.config.ts` — raise it when tests grow, never lower it to pass.
+TypeScript runs with `noUncheckedIndexedAccess`.
+
+The image runs as `node` (uid 1000) so bind-mounted data stays owned by the
+host user, and has a Docker `HEALTHCHECK` — the main loop touches `HEARTBEAT_FILE` every turn;
+the check fails if it is older than 10 minutes.
+
 ## Critical conventions
 
 **Keep it small and sequential.** One loop in `main.ts`: scan every

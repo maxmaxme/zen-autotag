@@ -120,7 +120,7 @@ describe('what scan touches', () => {
     await scan(deps, new Set());
     expect(saved).toHaveLength(1);
     expect(saved[0]).toEqual({ ...t, tag: [GROCERIES], viewed: true, changed: expect.any(Number) });
-    expect(saved[0].changed).toBeGreaterThan(t.changed);
+    expect(saved[0]!.changed).toBeGreaterThan(t.changed);
   });
 
   it("never overwrites the user's comment", async () => {
@@ -135,8 +135,8 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ outcome: 0, income: 2000, payee: 'Employer' })]);
     const requests = jev({ choice: 'Salary', confidence: 0.99 });
     await scan(deps, new Set());
-    expect(Object.keys(requests[0].criteria)).toEqual(['Salary']);
-    expect(requests[0].state).toMatchObject({ direction: 'money in', amount: 2000 });
+    expect(Object.keys(requests[0]!.criteria)).toEqual(['Salary']);
+    expect(requests[0]!.state).toMatchObject({ direction: 'money in', amount: 2000 });
   });
 
   it('money back from a payee you have paid is a refund: spending categories, flagged for Jev', async () => {
@@ -144,9 +144,9 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ outcome: 0, income: 3, payee: 'Shop', originalPayee: 'Shop' })], [paid]);
     const requests = jev({ choice: 'Food → Groceries', confidence: 0.9 });
     await scan(deps, new Set());
-    expect(Object.keys(requests[0].criteria)).toContain('Food → Groceries');
-    expect(Object.keys(requests[0].criteria)).not.toContain('Salary');
-    expect(requests[0].state.looks_like).toMatch(/refund/);
+    expect(Object.keys(requests[0]!.criteria)).toContain('Food → Groceries');
+    expect(Object.keys(requests[0]!.criteria)).not.toContain('Salary');
+    expect(requests[0]!.state.looks_like).toMatch(/refund/);
   });
 
   it('gives Jev the readable category names, the user hints and the payee history', async () => {
@@ -156,8 +156,8 @@ describe('what scan touches', () => {
     const { deps } = setup([tx({ payee: 'Cafe', originalPayee: 'Cafe' })], past);
     const requests = jev({ choice: 'Food → Out', confidence: 0.9 });
     await scan(deps, new Set());
-    expect(requests[0].criteria).toMatchObject({ 'Food → Out': 'eating out', '🎈': 'party supplies' });
-    expect(requests[0].state.how_i_filed_this_payee_before).toEqual([
+    expect(requests[0]!.criteria).toMatchObject({ 'Food → Out': 'eating out', '🎈': 'party supplies' });
+    expect(requests[0]!.state.how_i_filed_this_payee_before).toEqual([
       { category: 'Food → Out', times: 1, typical_amount: 4 },
     ]);
   });

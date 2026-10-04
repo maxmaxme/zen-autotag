@@ -14,8 +14,17 @@ COPY src ./src
 
 # config.json (start date + category hints) lives in the data volume.
 ENV NODE_ENV=production \
-    CONFIG_PATH=/app/data/config.json
+    CONFIG_PATH=/app/data/config.json \
+    HEARTBEAT_FILE=/tmp/alive
 
+# uid 1000, so files in a bind-mounted data dir belong to the host user.
+RUN mkdir -p /app/data && chown node:node /app/data
+USER node
 VOLUME ["/app/data"]
+
+# The loop touches HEARTBEAT_FILE at least once a minute; a scan can take a
+# few. Older than 10 minutes means the process is stuck.
+HEALTHCHECK --interval=1m --timeout=5s --start-period=1m --retries=3 \
+  CMD find "$HEARTBEAT_FILE" -mmin -10 | grep -q .
 
 ENTRYPOINT ["node", "src/main.ts"]

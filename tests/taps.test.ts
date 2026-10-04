@@ -80,18 +80,18 @@ describe('button taps', () => {
   it('Other shows every matching category under the original buttons, and Back restores them', async () => {
     const s = setup();
     await handleTap(s.deps, s.tap(encode({ kind: 'other', tx: txId })));
-    const expanded = s.edits[0].keyboard!;
+    const expanded = s.edits[0]!.keyboard!;
     expect(labels(expanded)).toEqual(['✓ OK', 'Gifts · 35%', '« Back', 'Food', 'Gifts']); // no income category for an expense
 
     const back = expanded.flat().find((b) => decode(b.data)?.kind === 'back')!;
     await handleTap(s.deps, s.tap(back.data, expanded));
-    expect(labels(s.edits[1].keyboard)).toEqual(labels(s.keyboard));
+    expect(labels(s.edits[1]!.keyboard)).toEqual(labels(s.keyboard));
   });
 
   it('Other on money in lists spending categories too — a refund goes there', async () => {
     const s = setup([{ ...transaction, outcome: 0, income: 9.6 }]);
     await handleTap(s.deps, s.tap(encode({ kind: 'other', tx: txId })));
-    expect(labels(s.edits[0].keyboard).slice(3)).toEqual(['Food', 'Gifts', 'Salary']);
+    expect(labels(s.edits[0]!.keyboard).slice(3)).toEqual(['Food', 'Gifts', 'Salary']);
   });
 
   it('ignores taps from any other chat', async () => {

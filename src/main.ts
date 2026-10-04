@@ -100,7 +100,12 @@ process.on('SIGINT', () => process.exit(0));
 log(`started — since ${deps.startDate}, scan every ${scanEveryMs / 60_000} min${deps.dryRun ? ', DRY RUN' : ''}`);
 const handled = new Set<string>();
 let lastScan = 0;
+// Touched every turn of the loop; the Docker healthcheck reads its age.
+const heartbeat = process.env.HEARTBEAT_FILE;
 for (;;) {
+  if (heartbeat) {
+    writeFileSync(heartbeat, '');
+  }
   if (Date.now() - lastScan >= scanEveryMs) {
     lastScan = Date.now();
     try {
