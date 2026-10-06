@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { GmailAuthError } from './gmail.ts';
 import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
+import { explain, outageLog } from './outage.ts';
 import { scan, type Deps } from './scan.ts';
 import { importLegacyConfig, openStore } from './store.ts';
 import { handleTap, type TapDeps } from './taps.ts';
@@ -67,7 +68,7 @@ const scanEveryMs = Number(env('SCAN_MINUTES', '5')) * 60_000;
 /** Errors go to Telegram, each distinct one at most every 6 hours. */
 const lastAlert = new Map<string, number>();
 async function alert(err: unknown): Promise<void> {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = explain(err);
   log(`error: ${msg}`);
   let hint = '';
   if (err instanceof ZenMoneyError && (err.status === 401 || err.status === 403)) {
@@ -89,6 +90,7 @@ process.on('SIGINT', () => process.exit(0));
 
 log(`started — since ${deps.startDate}, scan every ${scanEveryMs / 60_000} min${deps.dryRun ? ', DRY RUN' : ''}`);
 const handled = new Set<string>();
+const telegramOutage = outageLog('telegram', log);
 let lastScan = 0;
 // Touched every turn of the loop; the Docker healthcheck reads its age.
 const heartbeat = process.env.HEARTBEAT_FILE;
@@ -110,13 +112,16 @@ for (;;) {
   }
   try {
     const wait = Math.max(1, Math.min(50, Math.ceil((lastScan + scanEveryMs - Date.now()) / 1000)));
-    for (const tap of await telegram.taps(wait)) {
+    const taps = await telegram.taps(wait);
+    telegramOutage.ok();
+    for (const tap of taps) {
       await handleTap(deps, tap).catch(alert);
     }
   } catch (err) {
     // Telegram itself failing (429, 5xx, a timed-out poll) has no channel to alert
-    // through and passes on its own: log it and wait as long as Telegram asks.
-    log(`telegram: ${err instanceof Error ? err.message : String(err)}`);
+    // through and passes on its own: one log line when it goes, one when it's back,
+    // and wait as long as Telegram asks.
+    telegramOutage.failed(err);
     const retryAfter = err instanceof TelegramError ? err.retryAfter : null;
     await new Promise((r) => setTimeout(r, (retryAfter ?? 10) * 1000));
   }
