@@ -1,6 +1,6 @@
 import { findMail, type Email } from './gmail.ts';
 import { classify, JevError, type Choice, type Option } from './jev.ts';
-import { MERCHANTS, receiptFor, type Merchant, type Receipt } from './receipts.ts';
+import { matchReceipts, MERCHANTS, type Match, type Merchant, type Receipt } from './receipts.ts';
 import { encode, escapeHtml, type Keyboard, type Telegram } from './telegram.ts';
 import { isTransfer, tagLabel, type Tag, type Transaction, type ZenMoney } from './zenmoney.ts';
 
@@ -182,10 +182,12 @@ function messageHtml(p: {
   day: string;
   via: string | null;
   items: string[];
+  /** "no receipt found", "receipt 25.78 €" … */
+  receiptNote: string | null;
   /** The category the transaction has now (after this pass). */
   category: string;
-  /** Jev's probability for that category. */
-  probability: number;
+  /** Jev's probability for that category; null when Jev wasn't asked. */
+  probability: number | null;
   /** True when Jev didn't set it — it's what ZenMoney had. */
   kept: boolean;
   dryRun: boolean;
@@ -193,14 +195,18 @@ function messageHtml(p: {
   const lines = [
     `<b>${escapeHtml(p.title)}</b> · ${escapeHtml(p.money)} · ${escapeHtml(p.account)} · ${shortDate(p.day)}`,
   ];
-  const details = [p.via ? `via ${p.via}` : '', p.items.slice(0, 3).join('; ') + (p.items.length > 3 ? ' …' : '')]
+  const details = [
+    p.via ? `via ${p.via}` : '',
+    p.items.slice(0, 3).join('; ') + (p.items.length > 3 ? ' …' : ''),
+    p.receiptNote ?? '',
+  ]
     .filter(Boolean)
     .join(' · ');
   if (details) {
     lines.push(`<i>${escapeHtml(details)}</i>`);
   }
   lines.push(
-    `Category: <b>${escapeHtml(p.category)}</b> · ${Math.round(p.probability * 100)}%${p.kept ? ' (kept from ZenMoney)' : ''}`,
+    `Category: <b>${escapeHtml(p.category)}</b>${p.probability === null ? '' : ` · ${Math.round(p.probability * 100)}%`}${p.kept ? ' (kept from ZenMoney)' : ''}`,
   );
   if (p.dryRun) {
     lines.push('<i>dry run — nothing written</i>');
@@ -244,7 +250,8 @@ interface Context {
   tags: Tag[];
   labels: Map<string, string>;
   accounts: Map<string, { title: string; symbol: string }>;
-  receipts: Map<Merchant, Receipt[]>;
+  /** Transaction id → its receipt, for the merchants that send them. */
+  receipts: Map<string, Match>;
 }
 
 /** What gets decided for one transaction. */
@@ -267,6 +274,43 @@ function newTransactions(transactions: readonly Transaction[], startDate: string
   );
 }
 
+function shiftDay(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY).toISOString().slice(0, 10);
+}
+
+/**
+ * Matches receipts against every charge of the merchant around their dates —
+ * not just the new ones — so a receipt that belongs to an older charge is
+ * never handed to a new one. A receipt below its charge is only for money out.
+ */
+function matchAll(all: readonly Transaction[], receipts: Map<Merchant, Receipt[]>): Map<string, Match> {
+  const out = new Map<string, Match>();
+  for (const [m, list] of receipts) {
+    const days = list.map((r) => r.day).toSorted();
+    const first = days[0];
+    const last = days.at(-1);
+    if (!first || !last) {
+      continue;
+    }
+    const [from, to] = [shiftDay(first, -m.maxDaysApart), shiftDay(last, m.maxDaysApart)];
+    const charges = all.filter(
+      (t) => !isTransfer(t) && t.date >= from && t.date <= to && m.payee.test(t.originalPayee || t.payee || ''),
+    );
+    const outgoing = new Set(charges.filter((t) => t.outcome > 0).map((t) => t.id));
+    const matches = matchReceipts(
+      charges.map((t) => ({ id: t.id, cents: cents(t), day: t.date })),
+      list,
+      m.maxDaysApart,
+    );
+    for (const [id, match] of matches) {
+      if (match.exact || outgoing.has(id)) {
+        out.set(id, match);
+      }
+    }
+  }
+  return out;
+}
+
 async function loadContext(deps: Deps, todo: readonly Transaction[]): Promise<Context> {
   const everything = await deps.zenmoney.since(0); // payee history
   const symbols = new Map(everything.instruments.map((i) => [i.id, i.symbol || i.shortTitle]));
@@ -280,7 +324,7 @@ async function loadContext(deps: Deps, todo: readonly Transaction[]): Promise<Co
         { title: a.title, symbol: (a.instrument !== null && symbols.get(a.instrument)) || '' },
       ]),
     ),
-    receipts: await receiptsFor(deps, todo),
+    receipts: matchAll(everything.transactions, await receiptsFor(deps, todo)),
   };
 }
 
@@ -323,6 +367,8 @@ interface Facts {
   refund: boolean;
   merchant: Merchant | undefined;
   receipt: Receipt | null;
+  /** The receipt is lower than the charge (the shop held more than it took). */
+  approximate: boolean;
   account: { title: string; symbol: string } | undefined;
   state: { payee: string | null; amount: number; [key: string]: unknown };
 }
@@ -331,8 +377,9 @@ function gather(ctx: Context, t: Transaction): Facts {
   const income = t.outcome === 0;
   const refund = income && paidBefore(t, ctx.all);
   const merchant = MERCHANTS.find((m) => m.payee.test(t.originalPayee || t.payee || ''));
-  const receipts = merchant ? (ctx.receipts.get(merchant) ?? []) : [];
-  const receipt = merchant ? receiptFor({ cents: cents(t), day: t.date }, receipts, merchant.maxDaysApart) : null;
+  const match = merchant ? ctx.receipts.get(t.id) : undefined;
+  const receipt = match?.receipt ?? null;
+  const approximate = match?.exact === false;
   const account = ctx.accounts.get(income ? t.incomeAccount : t.outcomeAccount);
   const state = {
     payee: counterparty(t),
@@ -344,8 +391,24 @@ function gather(ctx: Context, t: Transaction): Facts {
     ...(refund ? { looks_like: 'a refund: money back from a payee I have paid before' } : {}),
     ...(merchant ? { purchased_via: merchant.context } : {}),
     ...(receipt ? { receipt: { store: receipt.store, items: receipt.items } } : {}),
+    ...(approximate && receipt
+      ? {
+          receipt_note: `the receipt total ${(receipt.totalCents / 100).toFixed(2)} is below this charge: the shop held more than it finally took (unavailable, replaced or weighed items)`,
+        }
+      : {}),
   };
-  return { income, refund, merchant, receipt, account, state };
+  return { income, refund, merchant, receipt, approximate, account, state };
+}
+
+/** Says when Jev saw no receipt — or one that doesn't add up to the charge. */
+function receiptNote(f: Facts): string | null {
+  if (!f.merchant) {
+    return null;
+  }
+  if (!f.receipt) {
+    return 'no receipt found — buttons: how you filed it before';
+  }
+  return f.approximate ? `receipt ${(f.receipt.totalCents / 100).toFixed(2)} ${f.account?.symbol ?? ''}`.trim() : null;
 }
 
 function notice(
@@ -353,7 +416,7 @@ function notice(
   ctx: Context,
   t: Transaction,
   f: Facts,
-  category: { id: string | null; probability: number; kept: boolean },
+  category: { id: string | null; probability: number | null; kept: boolean },
   alternatives: ReturnType<typeof suggestions>,
 ) {
   return {
@@ -362,8 +425,9 @@ function notice(
       money: `${f.income ? '+' : '−'}${f.state.amount.toFixed(2)} ${f.account?.symbol ?? ''}`.trim(),
       account: f.account?.title ?? '',
       day: t.date,
-      via: f.merchant && f.receipt ? f.merchant.name : null,
+      via: f.merchant ? f.merchant.name : null,
       items: f.receipt?.items ?? [],
+      receiptNote: receiptNote(f),
       category: category.id ? (ctx.labels.get(category.id) ?? category.id) : 'none',
       probability: category.probability,
       kept: category.kept,
@@ -373,8 +437,35 @@ function notice(
   };
 }
 
+/** A charge that should have a receipt is given this long for the email to arrive. */
+const RECEIPT_WAIT_HOURS = 12;
+
+/**
+ * No receipt for a merchant whose charges all look alike: the classifier
+ * would only be guessing from the payee name. So nothing is set; you're asked,
+ * with how you filed this payee before as the buttons.
+ */
+function askWithoutReceipt(deps: Deps, ctx: Context, t: Transaction, f: Facts): Decision {
+  const currentId = t.tag?.[0] ?? null;
+  const history = payeeHistory(t, ctx.all, ctx.tags);
+  const total = history.reduce((n, h) => n + h.times, 0);
+  const alternatives = history
+    .filter((h) => h.tagId !== currentId)
+    .slice(0, MAX_SUGGESTIONS)
+    .map((h) => ({ id: h.tagId, label: h.category, probability: h.times / total }));
+  return {
+    update: { ...t, viewed: true, changed: Math.floor(Date.now() / 1000) },
+    message: notice(deps, ctx, t, f, { id: currentId, probability: null, kept: currentId !== null }, alternatives),
+    note: `${t.date} ${String(f.state.payee)} ${f.state.amount} → asked: no receipt`,
+  };
+}
+
 async function decide(deps: Deps, ctx: Context, t: Transaction): Promise<Decision | null> {
   const f = gather(ctx, t);
+  if (f.merchant && deps.gmail && !f.receipt) {
+    const waited = Date.now() / 1000 - t.created >= RECEIPT_WAIT_HOURS * 3600;
+    return waited ? askWithoutReceipt(deps, ctx, t, f) : null; // null: try again next pass
+  }
   const options = categoryOptions(f.income && !f.refund, ctx.tags, deps.hints);
   const chosen = await choose(deps, ctx, t, f.state, f.receipt !== null, options);
   if (!chosen) {

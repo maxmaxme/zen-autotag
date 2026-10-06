@@ -75,7 +75,11 @@ a Telegram update that doesn't parse is skipped (offset still advances).
 
 **Never guess on failure.** A Jev 5xx skips that transaction (retried next
 pass, nothing marked); 401/403 fails the pass (Telegram alert). An email
-that doesn't parse is logged; the charge falls back to history-only.
+that doesn't parse is logged and skipped. A look-alike merchant's charge
+with no receipt waits RECEIPT_WAIT_HOURS, then is asked about with the payee
+history as buttons — never sent to Jev (it would guess from the name alone).
+A receipt below its charge (`matchReceipts`) is used only if it's the single
+unclaimed one ≥60% of the charge; Jev gets `receipt_note` saying so.
 
 **Tests check behaviour that can go wrong** (wrong total picked from a
 receipt, a field lost on write, a tie matched at random, a tap from another

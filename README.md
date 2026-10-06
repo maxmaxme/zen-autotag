@@ -14,6 +14,12 @@ ZenMoney that you haven't viewed yet, and for each one:
    filed this payee before, optional hints for categories whose names don't
    explain themselves — and, for merchants whose charges all look alike, the
    **receipt from your mailbox** (Glovo, Amazon): store and line items.
+   The receipt is the one with the same amount — or, when the shop held
+   more than it finally took (unavailable or replaced items, weighed goods),
+   the only unclaimed one a bit below it, which Jev is told about.
+   **No receipt yet?** The charge waits up to 12 h for the email. Still none:
+   Jev isn't asked — it would be guessing from "Glovo, 30 €" — and nothing is
+   set; you get a message whose buttons are how you filed that payee before.
    A bank line with no payee is known by its description ("To Sam K").
    Money in from a payee you've paid before is treated as a refund and
    offered spending categories — in ZenMoney that books it as a return.

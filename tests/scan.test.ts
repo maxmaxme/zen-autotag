@@ -328,6 +328,63 @@ describe('failures that must not lose or block work', () => {
     mailbox.emails = [];
   });
 
+  it('tells Jev and you when the receipt is below the charge, and says when there is none', async () => {
+    const glovo = (outcome: number) =>
+      tx({ payee: 'Glovo 06oct Abc123de', originalPayee: 'Glovo 06oct Abc123de', outcome, date: '2026-10-06' });
+    const { deps, sent } = setup([glovo(32.79), glovo(12.5)]);
+    deps.gmail = { user: 'u', appPassword: 'p' };
+    mailbox.emails = [
+      glovoOrderEmail({
+        store: 'Pets',
+        date: new Date('2026-10-06T07:54:00Z'),
+        total: '25,78',
+        products: [{ qty: 2, name: 'Dog food', price: '25,78' }],
+      }),
+    ];
+    const requests = jev({ choice: 'Food', confidence: 0.6 }, { choice: 'Food', confidence: 0.6 });
+    await scan(deps, new Set());
+    mailbox.emails = [];
+
+    const held = requests.find((r) => r.state.amount === 32.79)!;
+    expect(held.state.receipt).toMatchObject({ store: 'Pets', items: ['2x Dog food'] });
+    expect(held.state.receipt_note).toMatch(/25\.78 is below this charge/);
+    const html = sent.map((m) => m.html).join('\n');
+    expect(html).toContain('via Glovo · 2x Dog food · receipt 25.78 €');
+    expect(html).toContain('via Glovo · no receipt found'); // the 12.50 one
+  });
+
+  it('without a receipt: waits for the email first, then asks with your history as the options — Jev is not asked', async () => {
+    const glovo = {
+      payee: 'Glovo 06oct Abc123de',
+      originalPayee: 'Glovo 06oct Abc123de',
+      outcome: 30,
+      date: '2026-10-06',
+    };
+    const past = [OUT, OUT, GROCERIES].map((tag) => tx({ ...glovo, viewed: true, tag: [tag], date: '2026-09-20' }));
+    const now = Math.floor(Date.now() / 1000);
+
+    const fresh = setup([tx({ ...glovo, created: now - 3600 })], past);
+    fresh.deps.gmail = { user: 'u', appPassword: 'p' };
+    const requests = jev();
+    expect(await scan(fresh.deps, new Set())).toBe(0); // the email may still come
+    expect(fresh.saved).toEqual([]);
+    expect(fresh.sent).toEqual([]);
+
+    const old = setup([tx({ ...glovo, created: now - 13 * 3600 })], past);
+    old.deps.gmail = { user: 'u', appPassword: 'p' };
+    expect(await scan(old.deps, new Set())).toBe(1);
+    expect(requests).toEqual([]);
+    expect(old.saved[0]).toMatchObject({ viewed: true, tag: null }); // nothing set until you pick
+    expect(old.sent[0]?.html).toContain('no receipt found');
+    expect(old.sent[0]?.html).toMatch(/^Category: <b>none<\/b>$/m); // no percentage, nothing "kept"
+    expect(old.sent[0]?.keyboard?.map((r) => r[0]?.text)).toEqual([
+      '✓ OK',
+      'Food → Out · 67%',
+      'Food → Groceries · 33%',
+      'Other category…',
+    ]);
+  });
+
   it('a failed write leaves the transactions to the next pass', async () => {
     const { deps } = setup([tx()]);
     deps.zenmoney.save = async () => {

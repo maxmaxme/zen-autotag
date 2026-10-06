@@ -8,6 +8,8 @@ export interface Receipt {
   totalCents: number;
   /** Local (Madrid) calendar day — the same day the card charge carries. */
   day: string;
+  /** A fixed price (a membership): only ever matched to the exact amount. */
+  fixedPrice?: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ function parseGlovoPrime(email: Email): Receipt | null {
     items: ['1x Glovo Prime membership (monthly)'],
     totalCents,
     day: localDay(email.date),
+    fixedPrice: true,
   };
 }
 
@@ -168,6 +171,16 @@ function daysApart(a: string, b: string): number {
   return Math.abs(Date.parse(`${a}T00:00:00Z`) - Date.parse(`${b}T00:00:00Z`)) / 86_400_000;
 }
 
+/** One order, however many emails describe it (the dispatch email may list items in another order). */
+function receiptKey(r: Receipt): string {
+  return `${r.store}|${r.items.toSorted().join(';')}`;
+}
+
+function distinct(receipts: readonly Receipt[]): Receipt[] {
+  const seen = new Set<string>();
+  return receipts.filter((r) => !seen.has(receiptKey(r)) && seen.add(receiptKey(r)) !== undefined);
+}
+
 /**
  * The receipt behind a charge: same amount to the cent, the closest day
  * within `maxDays`. Copies of one order (Amazon's "Ordered" and
@@ -179,17 +192,70 @@ export function receiptFor(
   receipts: readonly Receipt[],
   maxDays = 1,
 ): Receipt | null {
-  const seen = new Set<string>();
-  const near = receipts
-    .filter((r) => r.totalCents === charge.cents && daysApart(r.day, charge.day) <= maxDays)
-    .filter((r) => {
-      const key = `${r.store}|${r.items.toSorted().join(';')}`; // the dispatch email may list items in another order
-      return !seen.has(key) && seen.add(key) !== undefined;
-    })
-    .toSorted((a, b) => daysApart(a.day, charge.day) - daysApart(b.day, charge.day));
+  const near = distinct(
+    receipts.filter((r) => r.totalCents === charge.cents && daysApart(r.day, charge.day) <= maxDays),
+  ).toSorted((a, b) => daysApart(a.day, charge.day) - daysApart(b.day, charge.day));
   const [best, next] = near;
   if (!best || (next && daysApart(next.day, charge.day) === daysApart(best.day, charge.day))) {
     return null;
   }
   return best;
+}
+
+export interface Match {
+  receipt: Receipt;
+  /** False: the receipt is below the charge — the shop held more than it finally took. */
+  exact: boolean;
+}
+
+/** How far below the charge a receipt may be and still be its order. */
+const MIN_SHARE_OF_CHARGE = 0.6;
+
+/**
+ * Receipts for one merchant's charges, all at once (pass every recent charge,
+ * already-categorised ones too, so their receipts aren't handed to others).
+ * Exact amounts first, as `receiptFor`. A charge left without one may take a
+ * receipt that is lower than it — shops like Glovo block an estimate and
+ * take less once items are unavailable, replaced or weighed — if it is in the
+ * date window, unclaimed, at least 60% of the charge, and the only such
+ * receipt. Two charges after the same one get neither. Never for fixed prices.
+ */
+export function matchReceipts(
+  charges: readonly { id: string; cents: number; day: string }[],
+  receipts: readonly Receipt[],
+  maxDays = 1,
+): Map<string, Match> {
+  const out = new Map<string, Match>();
+  for (const c of charges) {
+    const receipt = receiptFor(c, receipts, maxDays);
+    if (receipt) {
+      out.set(c.id, { receipt, exact: true });
+    }
+  }
+  const taken = new Set([...out.values()].map((m) => receiptKey(m.receipt)));
+  const claims = new Map<string, string[]>(); // receipt key → charge ids
+  const candidate = new Map<string, Receipt>();
+  for (const c of charges.filter((x) => !out.has(x.id))) {
+    const near = distinct(
+      receipts.filter(
+        (r) =>
+          !r.fixedPrice &&
+          !taken.has(receiptKey(r)) &&
+          r.totalCents < c.cents &&
+          r.totalCents >= c.cents * MIN_SHARE_OF_CHARGE &&
+          daysApart(r.day, c.day) <= maxDays,
+      ),
+    );
+    const only = near.length === 1 ? near[0] : undefined;
+    if (only) {
+      candidate.set(c.id, only);
+      claims.set(receiptKey(only), [...(claims.get(receiptKey(only)) ?? []), c.id]);
+    }
+  }
+  for (const [id, receipt] of candidate) {
+    if (claims.get(receiptKey(receipt))?.length === 1) {
+      out.set(id, { receipt, exact: false });
+    }
+  }
+  return out;
 }

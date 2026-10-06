@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MERCHANTS, receiptFor } from '../src/receipts.ts';
+import { matchReceipts, MERCHANTS, receiptFor } from '../src/receipts.ts';
 import { amazonOrderEmail, amazonRefundEmail, glovoOrderEmail, paypalReceiptEmail } from './fixtures.ts';
 
 const glovo = MERCHANTS[0]!;
@@ -118,6 +118,42 @@ describe('receiptFor', () => {
     expect(
       receiptFor({ cents: 799, day: '2026-10-03' }, [r('A', 799, '2026-10-01'), r('B', 798, '2026-10-03')]),
     ).toBeNull();
+  });
+});
+
+describe('matchReceipts', () => {
+  const r = (store: string, totalCents: number, day: string, fixedPrice = false) => ({
+    store,
+    items: [],
+    totalCents,
+    day,
+    ...(fixedPrice ? { fixedPrice } : {}),
+  });
+  const c = (id: string, cents: number, day = '2026-10-06') => ({ id, cents, day });
+  const summary = (m: ReturnType<typeof matchReceipts>) =>
+    Object.fromEntries([...m].map(([id, x]) => [id, `${x.receipt.store}${x.exact ? '' : ' ≈'}`]));
+
+  it('takes a lower receipt for a charge that held more than the shop finally took', () => {
+    // Held 32.79 for a scheduled order; an item was replaced and the receipt says 25.78.
+    expect(summary(matchReceipts([c('a', 3279)], [r('Pets', 2578, '2026-10-06')]))).toEqual({ a: 'Pets ≈' });
+  });
+
+  it('exact amounts come first, and a receipt that is already some charge’s is not reused', () => {
+    const receipts = [r('Sushi', 2080, '2026-10-06'), r('Pets', 2578, '2026-10-06')];
+    expect(summary(matchReceipts([c('sushi', 2080), c('held', 3279)], receipts))).toEqual({
+      sushi: 'Sushi',
+      held: 'Pets ≈',
+    });
+    // Without the sushi charge in the list, 20.80 would also look like a candidate for 32.79: no guess then.
+    expect(summary(matchReceipts([c('held', 3279)], receipts))).toEqual({});
+  });
+
+  it('gives up rather than guess: two charges after one receipt, a higher receipt, too low, too far, a fixed price', () => {
+    expect(summary(matchReceipts([c('a', 3000), c('b', 3100)], [r('X', 2500, '2026-10-06')]))).toEqual({});
+    expect(summary(matchReceipts([c('a', 2000)], [r('X', 2500, '2026-10-06')]))).toEqual({});
+    expect(summary(matchReceipts([c('a', 5000)], [r('X', 2500, '2026-10-06')]))).toEqual({}); // 50% of the charge
+    expect(summary(matchReceipts([c('a', 3000)], [r('X', 2500, '2026-10-02')]))).toEqual({});
+    expect(summary(matchReceipts([c('a', 999)], [r('Membership', 799, '2026-10-06', true)]))).toEqual({});
   });
 });
 
