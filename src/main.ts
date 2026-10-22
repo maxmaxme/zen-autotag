@@ -112,8 +112,9 @@ for (;;) {
   }
   try {
     const wait = Math.max(1, Math.min(50, Math.ceil((lastScan + scanEveryMs - Date.now()) / 1000)));
+    const polledAt = Date.now();
     const taps = await telegram.taps(wait);
-    telegramOutage.ok();
+    telegramOutage.ok(polledAt);
     for (const tap of taps) {
       await handleTap(deps, tap).catch(alert);
     }

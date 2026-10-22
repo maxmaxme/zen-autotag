@@ -27,12 +27,25 @@ describe('outageLog', () => {
     outage.failed(new Error('timeout'));
     t = 130_000;
     outage.failed(new TypeError('fetch failed', { cause: { code: 'ETIMEDOUT' } }));
-    outage.ok();
+    t = 190_000; // the poll that got through was made at 140 s and returned 50 s later
+    outage.ok(140_000);
     outage.ok();
 
     expect(lines).toEqual([
       'telegram: unreachable — Bad Gateway',
       'telegram: back after 2 min (3 failed, last: fetch failed (ETIMEDOUT))',
     ]);
+  });
+
+  it('says nothing about a single failed call the next one gets past', () => {
+    const lines: string[] = [];
+    const outage = outageLog('telegram', (m) => lines.push(m));
+
+    outage.failed(new TypeError('fetch failed', { cause: { code: 'ECONNRESET' } }));
+    outage.ok();
+    outage.failed(new Error('Bad Gateway'));
+    outage.ok();
+
+    expect(lines).toEqual([]);
   });
 });

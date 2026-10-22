@@ -26,13 +26,15 @@ function duration(ms: number): string {
 }
 
 /**
- * Two log lines per outage instead of one per failed poll: when it starts
- * (with the first reason) and when it ends (how long, how many failures,
- * the last reason).
+ * Two log lines per outage instead of one per failed poll: when it turns out
+ * to be one (the second failure in a row, with the first reason) and when it
+ * ends (how long, how many failures, the last reason). A single failed call
+ * that the next one gets past is a blip, not an outage — no lines at all.
  */
 export function outageLog(name: string, log: (msg: string) => void, now: () => number = Date.now) {
   let since: number | null = null;
   let failures = 0;
+  let first = '';
   let last = '';
   return {
     failed(err: unknown): void {
@@ -40,15 +42,18 @@ export function outageLog(name: string, log: (msg: string) => void, now: () => n
       last = explain(err);
       if (since === null) {
         since = now();
-        log(`${name}: unreachable — ${last}`);
+        first = last;
+      } else if (failures === 2) {
+        log(`${name}: unreachable — ${first}`);
       }
     },
-    ok(): void {
-      if (since !== null) {
-        log(`${name}: back after ${duration(now() - since)} (${failures} failed, last: ${last})`);
-        since = null;
-        failures = 0;
+    /** `at`: when the call that succeeded was made — a long poll returns long after it got through. */
+    ok(at: number = now()): void {
+      if (since !== null && failures > 1) {
+        log(`${name}: back after ${duration(at - since)} (${failures} failed, last: ${last})`);
       }
+      since = null;
+      failures = 0;
     },
   };
 }
