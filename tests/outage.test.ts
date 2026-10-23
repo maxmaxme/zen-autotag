@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { explain, outageLog } from '../src/outage.ts';
+import { explain, isNetworkError, outageLog } from '../src/outage.ts';
 
 describe('explain', () => {
   it("adds what fetch's bare message hides", () => {
@@ -47,5 +47,19 @@ describe('outageLog', () => {
     outage.ok();
 
     expect(lines).toEqual([]);
+  });
+});
+
+describe('isNetworkError', () => {
+  it('tells the network failing from a service saying no', () => {
+    expect(isNetworkError(new TypeError('fetch failed', { cause: { code: 'UND_ERR_CONNECT_TIMEOUT' } }))).toBe(true);
+    expect(isNetworkError(new DOMException('The operation was aborted due to timeout', 'TimeoutError'))).toBe(true);
+    expect(
+      isNetworkError(Object.assign(new Error('getaddrinfo EAI_AGAIN imap.gmail.com'), { code: 'EAI_AGAIN' })),
+    ).toBe(true);
+
+    expect(isNetworkError(new Error('ZenMoney 401: Unauthorized'))).toBe(false);
+    expect(isNetworkError(new TypeError("Cannot read properties of undefined (reading 'id')"))).toBe(false);
+    expect(isNetworkError(Object.assign(new Error('no such folder'), { code: 'NotFound' }))).toBe(false);
   });
 });

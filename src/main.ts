@@ -3,7 +3,7 @@ import * as v from 'valibot';
 import { GmailAuthError } from './gmail.ts';
 import { JevError } from './jev.ts';
 import { localDay } from './receipts.ts';
-import { explain, outageLog } from './outage.ts';
+import { explain, isNetworkError, outageLog } from './outage.ts';
 import { scan, type Deps } from './scan.ts';
 import { importLegacyConfig, openStore } from './store.ts';
 import { handleTap, type TapDeps } from './taps.ts';
@@ -92,6 +92,7 @@ log(`started — since ${deps.startDate}, scan every ${scanEveryMs / 60_000} min
 const handled = new Set<string>();
 const telegramOutage = outageLog('telegram', log);
 let lastScan = 0;
+let failedScans = 0; // in a row, network trouble only
 // Touched every turn of the loop; the Docker healthcheck reads its age.
 const heartbeat = process.env.HEARTBEAT_FILE;
 for (;;) {
@@ -103,11 +104,17 @@ for (;;) {
     try {
       deps.hints = store.hints(); // an edit in the database applies on the next scan
       const n = await scan(deps, handled);
+      failedScans = 0;
       if (n > 0) {
         log(`categorised ${n}`);
       }
     } catch (err) {
-      await alert(err);
+      // The network comes back on its own; only the third failed scan in a row is worth a message.
+      if (isNetworkError(err) && ++failedScans < 3) {
+        log(`scan failed (${failedScans} in a row), retrying next pass: ${explain(err)}`);
+      } else {
+        await alert(err);
+      }
     }
   }
   try {

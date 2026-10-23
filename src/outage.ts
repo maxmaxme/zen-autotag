@@ -57,3 +57,30 @@ export function outageLog(name: string, log: (msg: string) => void, now: () => n
     },
   };
 }
+
+/** Codes for the network letting us down (Node sockets, DNS, imapflow timeouts) — not the service saying no. */
+const NETWORK_CODES = new Set([
+  'ECONNRESET',
+  'ECONNREFUSED',
+  'ETIMEDOUT',
+  'ENOTFOUND',
+  'EAI_AGAIN',
+  'EHOSTUNREACH',
+  'ENETUNREACH',
+  'EPIPE',
+  'ETIMEOUT',
+  'CONNECT_TIMEOUT',
+  'GREETING_TIMEOUT',
+  'UPGRADE_TIMEOUT',
+]);
+
+/** Trouble that passes on its own: fetch couldn't get through, a request timed out, a socket dropped. */
+export function isNetworkError(err: unknown): boolean {
+  if (err instanceof TypeError && err.message === 'fetch failed') {
+    return true; // how undici reports anything below HTTP; the cause says what
+  }
+  if (err instanceof DOMException && err.name === 'TimeoutError') {
+    return true; // AbortSignal.timeout
+  }
+  return v.is(CodeSchema, err) && NETWORK_CODES.has(err.code);
+}
